@@ -29,9 +29,11 @@ jobs:
         run: node scripts/verify.mjs
       - name: Verify HammerXI V2 flow
         run: node scripts/verify-v2.mjs
+      - name: Run V2 engine regression suite
+        run: node scripts/regression-v2.mjs
       - name: Smoke-test browser startup
         run: node scripts/smoke.mjs
       - name: Build production bundle
         run: npm run build
       - name: Verify production bundle exists
-        run: test -s dist/app.js && test -s dist/index.html && test -s dist/styles.css
+        run: test -s dist/app.js && test -s dist/index.html && test -s dist/styles.css && test -s dist/ceremony.js
