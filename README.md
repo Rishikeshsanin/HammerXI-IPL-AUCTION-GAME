@@ -10,6 +10,8 @@ Professional cricket-auction energy without accounts, permanent profiles, or a f
 - No database for user profiles or auction history.
 - Live room state exists only in connected browsers.
 - Encrypted peer-to-peer room transport via Trystero/WebRTC.
+- Current auction lots can show free-license player portraits resolved from Wikimedia, with an initials fallback.
+- PASS is reversible while the lot is live and never stops the clock.
 - Results can be exported as a social-ready PNG locally in the browser.
 - Existing IPL franchise names are offered as fan-game presets with original generic badges; no official logos are bundled.
 
