@@ -117,7 +117,8 @@ function renderLobby(){
   <div class="setting-row"><label>Room capacity</label><select class="select" data-setting="maxTeams" ${amHost()?'':'disabled'}>${opts([2,3,4,5,6,7,8,9,10],'maxTeams',' teams')}</select></div>
   <div class="setting-row"><label>Squad size</label><select class="select" data-setting="squadSize" ${amHost()?'':'disabled'}>${opts([15,16,17,18,19,20],'squadSize','')}</select></div>
   <div class="setting-row"><label>Starting purse</label><select class="select" data-setting="purse" ${amHost()?'':'disabled'}>${opts([100,125,150],'purse',' Cr')}</select></div>
-  <div class="setting-row"><label>Bid clock</label><select class="select" data-setting="timerSeconds" ${amHost()?'':'disabled'}>${opts([8,10,12,15,20],'timerSeconds','s')}</select></div></div>
+  <div class="setting-row"><label>Bid clock</label><select class="select" data-setting="timerSeconds" ${amHost()?'':'disabled'}>${opts([8,10,12,15,20],'timerSeconds','s')}</select></div>
+  <div class="setting-row"><label>Hall of Fame</label><select class="select" data-setting="hallOfFame" ${amHost()?'':'disabled'}><option value="0" ${!g.settings.hallOfFame?'selected':''}>Off</option><option value="1" ${g.settings.hallOfFame?'selected':''}>On</option></select></div></div>
   <div class="summary-block"><span>Overseas cap</span><strong>${g.settings.squadSize>=18?7:6}</strong></div><div class="summary-block"><span>Player pool now</span><strong>${pool}</strong></div><div class="connection-banner"><span class="dot ${app.networkStatus==='local'?'warn':''}"></span><span>${amHost()?'You are the auction host. Your browser validates every bid and broadcasts the official room state.':'The host validates every bid, purse and squad rule before it becomes official.'}</span></div>
   ${amHost()?`<button class="btn primary" data-action="start-auction" style="width:100%;margin-top:14px" ${g.teams.length<2?'disabled':''}>${g.teams.length<2?'Need at least 2 teams':'Start live auction'}</button>`:'<div class="waiting" style="margin-top:16px"><span class="spinner"></span><span class="small-copy muted">Waiting for host to start…</span></div>'}</aside></div>${footer()}`;
 }
@@ -226,7 +227,7 @@ function renderAuction(){
   ${a.status==='sold'?`<div class="sold-overlay"><div class="sold-rays"></div><div class="gavel-swing">🔨</div><div class="hammer-card">${a.resolution?.war?'<div class="sold-war">🔥 BIDDING WAR WON</div>':''}<div class="hammer-word">SOLD</div><div class="sold-player">${esc(p.name)}</div><div class="sold-to">${crest(g.teams.find(t=>t.id===a.resolution.teamId),'sm')}<span>TO <strong>${esc(g.teams.find(t=>t.id===a.resolution.teamId)?.name||'')}</strong></span></div><div class="hammer-price">${fmtPrice(a.resolution.price)}</div></div></div>`:''}
   ${a.status==='unsold'?`<div class="sold-overlay"><div class="hammer-card"><div class="hammer-word unsold">UNSOLD</div><div class="hammer-sub">${esc(p.name)} goes to ${a.round===1?'the recall list':'the archives'}</div></div></div>`:''}
   </div><div class="auction-mobile-stats"><div class="metric"><span>Purse</span><strong>${fmtPrice(me?.budget||0)}</strong></div><div class="metric"><span>Squad</span><strong>${me?.players.length||0}/${g.settings.squadSize}</strong></div><div class="metric"><span>Overseas</span><strong>${overseasCount(me||{players:[]})}/${g.settings.overseasLimit}</strong></div></div></section>
-  <aside class="auction-col right card auction-side"><div class="section-label">Room activity</div><div class="feed" id="feed">${feed||'<div class="feed-item">Auction activity will appear here.</div>'}</div><div class="chat-box"><input class="input" id="chat-input" maxlength="70" placeholder="Auction chat… keep it clean"><button class="icon-btn" data-action="send-chat">↗</button></div><div class="reactions"><button class="reaction" data-action="reaction" data-value="🔥">🔥</button><button class="reaction" data-action="reaction" data-value="😂">😂</button><button class="reaction" data-action="reaction" data-value="💀">💀</button><button class="reaction" data-action="reaction" data-value="👏">👏</button></div><div style="height:18px"></div><div class="section-label">Auction control</div>${amHost()?`<div style="display:grid;grid-template-columns:1fr 1fr;gap:7px"><button class="btn small secondary" data-action="pause">${a.paused?'Resume':'Pause'}</button><button class="btn small ghost" data-action="force-next">Skip lot</button></div>`:`<div class="small-copy muted">Host controls the hammer and auction flow.</div>`}<button class="btn small broadcast-toggle" data-action="toggle-broadcast" style="width:100%;margin-top:7px">🏟️ Broadcast screen</button><div class="summary-block"><span>Pool</span><strong>${a.queue.length} lots</strong></div><div class="summary-block"><span>Sold</span><strong>${a.sold.length}</strong></div><div class="summary-block"><span>Recall</span><strong>${a.round===2?'Active':`${a.unsold.length} waiting`}</strong></div></aside></main>`;
+  <aside class="auction-col right card auction-side"><div class="section-label">Room activity</div><div class="feed" id="feed">${feed||'<div class="feed-item">Auction activity will appear here.</div>'}</div><div class="chat-box"><input class="input" id="chat-input" maxlength="70" placeholder="Auction chat… keep it clean"><button class="icon-btn" data-action="send-chat">↗</button></div><div class="reactions"><button class="reaction" data-action="reaction" data-value="🔥">🔥</button><button class="reaction" data-action="reaction" data-value="😂">😂</button><button class="reaction" data-action="reaction" data-value="💀">💀</button><button class="reaction" data-action="reaction" data-value="👏">👏</button></div><div style="height:18px"></div><div class="section-label">Auction control</div>${amHost()?`<div style="display:grid;grid-template-columns:1fr 1fr;gap:7px"><button class="btn small secondary" data-action="pause">${a.paused?'▶ Continue auction':'⏸ Pause auction'}</button><button class="btn small ghost" data-action="force-next">Skip lot</button></div>`:`<div class="small-copy muted">Host controls the hammer and auction flow.</div>`}<button class="btn small broadcast-toggle" data-action="toggle-broadcast" style="width:100%;margin-top:7px">🏟️ Broadcast screen</button><div class="summary-block"><span>Pool</span><strong>${a.queue.length} lots</strong></div><div class="summary-block"><span>Sold</span><strong>${a.sold.length}</strong></div><div class="summary-block"><span>Recall</span><strong>${a.round===2?'Active':`${a.unsold.length} waiting`}</strong></div></aside></main>`;
 }
 
 function renderBroadcastAuction(){
@@ -357,17 +358,44 @@ function handleCommand(peerId,cmd){
 function command(cmd){if(!app.game||!app.network)return;if(amHost())handleCommand(app.network.selfId,cmd);else app.network.send('cmd',cmd,app.game.hostPeerId)}
 function applySetting(peerId,cmd){
   const g=app.game;if(peerId!==g.hostPeerId||g.phase!=='lobby')return;const key=cmd.key;let value=Number(cmd.value);
-  if(key==='maxTeams')value=clamp(value,Math.max(2,g.teams.length),10); else if(key==='squadSize')value=clamp(value,15,20);else if(key==='purse'&&!([100,125,150].includes(value)))return;else if(key==='timerSeconds'&&!([8,10,12,15,20].includes(value)))return;else if(!['maxTeams','squadSize','purse','timerSeconds'].includes(key))return;
+  if(key==='maxTeams')value=clamp(value,Math.max(2,g.teams.length),10);
+  else if(key==='squadSize')value=clamp(value,15,20);
+  else if(key==='purse'&&!([100,125,150].includes(value)))return;
+  else if(key==='timerSeconds'&&!([8,10,12,15,20].includes(value)))return;
+  else if(key==='hallOfFame')value=value===1;
+  else if(!['maxTeams','squadSize','purse','timerSeconds','hallOfFame'].includes(key))return;
   g.settings[key]=value;g.settings.overseasLimit=g.settings.squadSize>=18?7:6;if(key==='purse')g.teams.forEach(t=>{if(!t.players.length)t.budget=value});broadcast();
 }
 function buildPool(count,seed){
   const n=POOL_SIZE_BY_TEAMS[clamp(count,2,10)]; const ranked=[...PLAYERS].sort((a,b)=>b.rating-a.rating||a.name.localeCompare(b.name)); const top=ranked.slice(0,12); const rest=ranked.slice(12); const bands=[];
   for(let i=0;i<rest.length;i+=20)bands.push(...shuffle(rest.slice(i,i+20),`${seed}-${i}`));return [...top,...bands].slice(0,n);
 }
+const SPECIALIST_SPINNERS=new Set([
+  'Rashid Khan','Noor Ahmad','Rahul Chahar','Kuldeep Yadav','Varun Chakaravarthy','Ravi Bishnoi','Yuzvendra Chahal',
+  'Keshav Maharaj','Shreyas Gopal','Mayank Markande','Suyash Sharma','Akeal Hosein','Prashant Solanki','Rehan Ahmed',
+  'Zeeshan Ansari','Vignesh Puthur','Allah Ghazanfar','Mujeeb Ur Rahman','Maheesh Theekshana','Adam Zampa'
+]);
+function auctionGroup(p){
+  if(p.role==='WK')return 'Wicketkeepers';
+  if(p.role==='BAT')return 'Batters';
+  if(p.role==='AR')return 'All-Rounders';
+  if(p.role==='BOWL'&&SPECIALIST_SPINNERS.has(p.name))return 'Spin Bowlers';
+  return 'Pace Bowlers';
+}
 function buildQueue(pool,seed){
-  const marquee=shuffle([...pool].sort((a,b)=>b.rating-a.rating).slice(0,12),`${seed}-marquee`).map(p=>({playerId:p.id,setLabel:'Marquee'}));
-  const rem=pool.filter(p=>!marquee.some(m=>m.playerId===p.id)); const labels={BAT:'Batters',AR:'All-Rounders',WK:'Wicketkeepers',BOWL:'Bowlers'}; const roles=['BAT','AR','WK','BOWL']; const queues=roles.map(r=>shuffle(rem.filter(p=>p.role===r),`${seed}-${r}`)); const out=[...marquee];
-  let cycle=0,added=true;while(added){added=false;for(let ri=0;ri<roles.length;ri++){const q=queues[ri];const chunk=q.splice(0,8);if(chunk.length){added=true;out.push(...chunk.map(p=>({playerId:p.id,setLabel:`${labels[roles[ri]]} · Set ${cycle+1}`})))}}cycle++}
+  const marqueePlayers=[...pool].sort((a,b)=>b.rating-a.rating).slice(0,12);
+  const marquee=shuffle(marqueePlayers,`${seed}-marquee`).map(p=>({playerId:p.id,setLabel:'Marquee · Set 1',category:'Marquee'}));
+  const marqueeIds=new Set(marqueePlayers.map(p=>p.id));
+  const rem=pool.filter(p=>!marqueeIds.has(p.id));
+  const sequence=['Wicketkeepers','Batters','All-Rounders','Spin Bowlers','Pace Bowlers'];
+  const out=[...marquee];
+  for(const category of sequence){
+    const players=shuffle(rem.filter(p=>auctionGroup(p)===category),`${seed}-${category}`);
+    for(let i=0;i<players.length;i+=8){
+      const setNo=Math.floor(i/8)+1;
+      out.push(...players.slice(i,i+8).map(p=>({playerId:p.id,setLabel:`${category} · Set ${setNo}`,category})));
+    }
+  }
   return out;
 }
 function startAuction(peerId){
@@ -442,7 +470,7 @@ function wrapText(ctx,text,x,y,maxWidth,lineHeight,maxLines=3){const words=text.
 function downloadCsv(){const g=app.game;const rows=[['Team','Owner','Player','Role','Overseas','Price (Cr)']];g.teams.forEach(t=>t.players.forEach(b=>{const p=byId(b.playerId);rows.push([t.name,t.ownerName,p.name,ROLE_LABEL[p.role],p.overseas?'Yes':'No',b.price])}));const csv=rows.map(r=>r.map(v=>`"${String(v).replace(/"/g,'""')}"`).join(',')).join('\n');const blob=new Blob([csv],{type:'text/csv'}),url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=`hammerxi-${g.roomCode}-auction.csv`;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000)}
 
 async function createRoom(){
-  try{app.identity=identityFromDraft();const code=roomCode();const net=await initNetwork(code);const t={id:uid(),ownerPeerId:net.selfId,ownerName:app.identity.ownerName,name:app.identity.name,colors:app.identity.colors,mark:app.identity.mark,kind:app.identity.kind,templateId:app.identity.templateId,budget:Number(app.draft.purse),players:[],connected:true};app.game={version:1,roomCode:code,hostPeerId:net.selfId,phase:'lobby',settings:{maxTeams:Number(app.draft.maxTeams),squadSize:Number(app.draft.squadSize),purse:Number(app.draft.purse),timerSeconds:Number(app.draft.timerSeconds),overseasLimit:Number(app.draft.squadSize)>=18?7:6},teams:[t],activity:[{id:uid(),text:`${t.ownerName} created the auction room.`,kind:'',at:Date.now()}],auction:null};app.route='lobby';app.pendingJoin=false;render();toast('Room created',`Invite friends with code ${code}.`,'ok')}catch(e){toast('Check your setup',e.message,'err')}
+  try{app.identity=identityFromDraft();const code=roomCode();const net=await initNetwork(code);const t={id:uid(),ownerPeerId:net.selfId,ownerName:app.identity.ownerName,name:app.identity.name,colors:app.identity.colors,mark:app.identity.mark,kind:app.identity.kind,templateId:app.identity.templateId,budget:Number(app.draft.purse),players:[],connected:true};app.game={version:2,roomCode:code,hostPeerId:net.selfId,phase:'lobby',settings:{maxTeams:Number(app.draft.maxTeams),squadSize:Number(app.draft.squadSize),purse:Number(app.draft.purse),timerSeconds:Number(app.draft.timerSeconds),overseasLimit:Number(app.draft.squadSize)>=18?7:6,hallOfFame:false},teams:[t],activity:[{id:uid(),text:`${t.ownerName} created the auction room.`,kind:'',at:Date.now()}],auction:null};app.route='lobby';app.pendingJoin=false;render();toast('Room created',`Invite friends with code ${code}.`,'ok')}catch(e){toast('Check your setup',e.message,'err')}
 }
 async function joinRoom(){
   try{app.identity=identityFromDraft();const code=app.draft.joinCode.trim().toUpperCase();if(!/^[A-Z2-9]{6}$/.test(code))throw new Error('Enter the 6-character room code');app.pendingJoin=true;app.game=null;app.route='lobby';const net=await initNetwork(code);setTimeout(()=>{if(app.pendingJoin)net.send('join',app.identity)},700);setTimeout(()=>{if(app.pendingJoin)toast('Still looking for host','Check the code and make sure the host has the lobby open.','err')},7000)}catch(e){app.pendingJoin=false;toast('Could not join',e.message,'err')}
