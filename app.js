@@ -262,7 +262,7 @@ ${[
 ].map((x,i)=>`<div class="rule-item"><div class="rule-num">${i+1}</div><div><strong>${x[0]}</strong><p>${x[1]}</p></div></div>`).join('')}</div><button class="btn primary" data-action="close-rules" style="width:100%;margin-top:20px">Got it</button></div></div>`}
 function render(){
   const root=$('#app');
-  const page=app.route==='home'?renderHome():app.route==='create'?renderCreate():app.route==='join'?renderJoin():app.route==='lobby'?renderLobby():app.route==='auction'?renderAuction():app.route==='results'?renderResults():renderHome();
+  const page=app.route==='home'?renderHome():app.route==='create'?renderCreate():app.route==='join'?renderJoin():app.route==='lobby'?renderLobby():app.route==='auction'?(app.broadcastMode?renderBroadcastAuction():renderAuction()):app.route==='results'?renderResults():renderHome();
   root.innerHTML=`<div class="shell">${page}</div>${rulesModal()}`;
   if(app.route==='auction'){updateTimerDom();hydratePlayerPhoto()}
 }
@@ -372,11 +372,12 @@ function buildQueue(pool,seed){
 }
 function startAuction(peerId){
   const g=app.game;if(peerId!==g.hostPeerId||g.phase!=='lobby'||g.teams.length<2)return;g.settings.overseasLimit=g.settings.squadSize>=18?7:6;g.teams.forEach(t=>{t.budget=g.settings.purse;t.players=[];t.connected=t.connected!==false});const pool=buildPool(g.teams.length,g.roomCode);const queue=buildQueue(pool,g.roomCode);
-  g.phase='auction';g.auction={queue,index:0,round:1,currentBid:byId(queue[0].playerId).basePrice,highestTeamId:null,passedTeamIds:[],deadline:Date.now()+g.settings.timerSeconds*1000,status:'live',paused:false,pauseRemaining:0,sold:[],unsold:[],resolution:null};addActivity(`Auction started with ${pool.length} players for ${g.teams.length} franchises.`,'sold');app.route='auction';broadcast();startHostClock();startTimerClock();
+  g.stats={bidCounts:{},warWins:{}};g.phase='auction';g.auction={queue,index:0,round:1,currentBid:byId(queue[0].playerId).basePrice,highestTeamId:null,passedTeamIds:[],deadline:Date.now()+g.settings.timerSeconds*1000,status:'live',paused:false,pauseRemaining:0,sold:[],unsold:[],resolution:null,bidHistory:[],war:null};addActivity(`Auction started with ${pool.length} players for ${g.teams.length} franchises.`,'sold');app.route='auction';app.broadcastMode=false;broadcast();startHostClock();startTimerClock();
 }
 function placeBid(peerId,team){
   const g=app.game,a=g.auction,p=currentPlayer(g);if(a.status!=='live'||a.paused)return sendNotice(peerId,'Bid blocked','The auction clock is paused.');const amount=nextBidAmount(a,p);const [ok,reason]=canTeamBid(team,p,amount,g);if(!ok){beep('error');return sendNotice(peerId,'Bid blocked',reason)}
-  a.currentBid=amount;a.highestTeamId=team.id;const reset=Math.max(5000,Math.round(g.settings.timerSeconds*.65)*1000);a.deadline=Date.now()+reset;addActivity(`${team.name} bids ${fmtPrice(amount)} for ${p.name}.`,'bid');beep('bid');broadcast();
+  a.currentBid=amount;a.highestTeamId=team.id;const now=Date.now();a.bidHistory=(a.bidHistory||[]).filter(x=>now-x.at<=15000);a.bidHistory.push({teamId:team.id,at:now});g.stats=g.stats||{bidCounts:{},warWins:{}};g.stats.bidCounts[team.id]=(g.stats.bidCounts[team.id]||0)+1;updateBiddingWar(g);
+  const reset=Math.max(5000,Math.round(g.settings.timerSeconds*.65)*1000);a.deadline=now+reset;app.lastTensionSecond=null;addActivity(`${team.name} bids ${fmtPrice(amount)} for ${p.name}.`,'bid');beep('bid');broadcast();
 }
 function passLot(peerId,team){
   const g=app.game,a=g.auction,p=currentPlayer(g);if(a.status!=='live'||a.paused||a.highestTeamId===team.id)return;
@@ -392,12 +393,15 @@ function checkLotViability(){
   if(!eligible.length)resolveUnsold();
 }
 function resolveSold(){
-  const g=app.game,a=g.auction;if(a.status!=='live'||!a.highestTeamId)return;const p=currentPlayer(g),t=g.teams.find(x=>x.id===a.highestTeamId);t.budget=round2(t.budget-a.currentBid);t.players.push({playerId:p.id,price:a.currentBid});a.sold.push({playerId:p.id,teamId:t.id,price:a.currentBid});a.status='sold';a.resolution={teamId:t.id,price:a.currentBid};addActivity(`SOLD — ${p.name} to ${t.name} for ${fmtPrice(a.currentBid)}.`,'sold');beep('sold');broadcast();scheduleAdvance();
+  const g=app.game,a=g.auction;if(a.status!=='live'||!a.highestTeamId)return;const p=currentPlayer(g),t=g.teams.find(x=>x.id===a.highestTeamId),war=!!a.war?.active;
+  t.budget=round2(t.budget-a.currentBid);t.players.push({playerId:p.id,price:a.currentBid});a.sold.push({playerId:p.id,teamId:t.id,price:a.currentBid,war,bidCount:(a.bidHistory||[]).length});a.status='sold';a.resolution={teamId:t.id,price:a.currentBid,war};
+  if(war){g.stats=g.stats||{bidCounts:{},warWins:{}};g.stats.warWins[t.id]=(g.stats.warWins[t.id]||0)+1}
+  addActivity(`SOLD — ${p.name} to ${t.name} for ${fmtPrice(a.currentBid)}.`,'sold');beep('sold');broadcast();scheduleAdvance();
 }
 function resolveUnsold(forced=false){
   const g=app.game,a=g.auction;if(a.status!=='live')return;const p=currentPlayer(g);if(a.round===1&&!a.unsold.includes(p.id))a.unsold.push(p.id);a.status='unsold';a.resolution={forced};addActivity(`${p.name} is unsold${forced?' (host skip)':''}.`);broadcast();scheduleAdvance();
 }
-function scheduleAdvance(){clearTimeout(app.advanceTimer);if(!amHost())return;app.advanceTimer=setTimeout(()=>{app.advanceTimer=null;advancePlayer()},1700)}
+function scheduleAdvance(){clearTimeout(app.advanceTimer);if(!amHost())return;app.advanceTimer=setTimeout(()=>{app.advanceTimer=null;advancePlayer()},2800)}
 function advancePlayer(){
   const g=app.game,a=g.auction;if(!amHost()||g.phase!=='auction')return;if(g.teams.every(t=>t.connected===false||t.players.length>=g.settings.squadSize)){finishAuction();return}
   a.index++;
@@ -406,14 +410,18 @@ function advancePlayer(){
       const recall=shuffle(a.unsold,g.roomCode+'-recall').map(id=>({playerId:id,setLabel:'Accelerated Recall'}));a.queue=recall;a.index=0;a.round=2;a.unsold=[];addActivity(`Accelerated recall begins with ${recall.length} unsold players.`,'sold');
     }else {finishAuction();return}
   }
-  const p=currentPlayer(g);a.currentBid=p.basePrice;a.highestTeamId=null;a.passedTeamIds=[];a.deadline=Date.now()+g.settings.timerSeconds*1000;a.status='live';a.paused=false;a.pauseRemaining=0;a.resolution=null;broadcast();checkLotViability();
+  const p=currentPlayer(g);a.currentBid=p.basePrice;a.highestTeamId=null;a.passedTeamIds=[];a.deadline=Date.now()+g.settings.timerSeconds*1000;a.status='live';a.paused=false;a.pauseRemaining=0;a.resolution=null;a.bidHistory=[];a.war=null;app.lastTensionSecond=null;app.lastTensionLot=null;broadcast();checkLotViability();
 }
 function finishAuction(){const g=app.game;g.phase='results';addActivity('Auction complete. Squads are locked.','sold');app.route='results';broadcast();clearInterval(app.hostClock)}
 function togglePause(){const g=app.game,a=g.auction;if(a.status!=='live')return;if(!a.paused){a.pauseRemaining=Math.max(0,a.deadline-Date.now());a.paused=true;addActivity('Host paused the auction.')}else{a.deadline=Date.now()+Math.max(2500,a.pauseRemaining);a.paused=false;addActivity('Auction resumed.')}broadcast()}
 function startHostClock(){clearInterval(app.hostClock);if(!amHost()||app.game?.phase!=='auction')return;app.hostClock=setInterval(()=>{const a=app.game?.auction;if(!a)return;if((a.status==='sold'||a.status==='unsold')&&!app.advanceTimer)scheduleAdvance();if(a.status==='live'&&!a.paused&&Date.now()>=a.deadline){a.highestTeamId?resolveSold():resolveUnsold()}},180)}
 function startTimerClock(){if(app.timerClock)return;app.timerClock=setInterval(updateTimerDom,120)}
 function updateTimerDom(){
-  const el=$('#timer'),txt=$('#timer-text'),g=app.game;if(!el||!txt||g?.phase!=='auction')return;const a=g.auction;if(a.paused){txt.textContent='Ⅱ';el.style.setProperty('--pct','100');return}const total=g.settings.timerSeconds*1000;const left=Math.max(0,a.deadline-Date.now());const sec=Math.ceil(left/1000);const pct=clamp((left/total)*100,0,100);txt.textContent=String(sec);el.style.setProperty('--pct',String(pct));el.classList.toggle('danger',sec<=3&&a.status==='live')
+  const el=$('#timer'),txt=$('#timer-text'),g=app.game;if(!el||!txt||g?.phase!=='auction')return;const a=g.auction;if(a.paused){txt.textContent='Ⅱ';el.style.setProperty('--pct','100');return}
+  const total=g.settings.timerSeconds*1000,left=Math.max(0,a.deadline-Date.now()),sec=Math.ceil(left/1000),pct=clamp((left/total)*100,0,100),lotKey=`${a.round}:${a.index}`;
+  txt.textContent=String(sec);el.style.setProperty('--pct',String(pct));const tension=sec<=3&&sec>0&&a.status==='live';el.classList.toggle('danger',tension);document.querySelector('.auction-stage, .broadcast-main')?.classList.toggle('tension',tension);
+  if(app.lastTensionLot!==lotKey){app.lastTensionLot=lotKey;app.lastTensionSecond=null}
+  if(tension&&app.lastTensionSecond!==sec){app.lastTensionSecond=sec;beep('tick');document.querySelector('.auction-stage, .broadcast-main')?.setAttribute('data-countdown',String(sec))}
 }
 
 function drawStory(team){
@@ -456,6 +464,7 @@ document.addEventListener('click',e=>{
   else if(a==='bid'){command({type:'bid'})}
   else if(a==='pass'){command({type:'pass'})}
   else if(a==='pause'){command({type:'pause'})}
+  else if(a==='toggle-broadcast'){app.broadcastMode=!app.broadcastMode;render()}
   else if(a==='force-next'){command({type:'force-next'})}
   else if(a==='send-chat'){const input=$('#chat-input');const text=input?.value?.trim();if(text){command({type:'chat',text});input.value=''}}
   else if(a==='reaction'){command({type:'reaction',value:b.dataset.value})}
@@ -463,7 +472,7 @@ document.addEventListener('click',e=>{
   else if(a==='csv'){downloadCsv()}
   else if(a==='leave'){leaveRoom()}
 });
-document.addEventListener('keydown',e=>{if(e.key==='Enter'&&e.target?.id==='chat-input'){e.preventDefault();document.querySelector('[data-action="send-chat"]')?.click()}if(e.code==='Space'&&app.route==='auction'&&document.activeElement?.tagName!=='INPUT'){e.preventDefault();document.querySelector('[data-action="bid"]')?.click()}});
+document.addEventListener('keydown',e=>{if(e.key==='Enter'&&e.target?.id==='chat-input'){e.preventDefault();document.querySelector('[data-action="send-chat"]')?.click()}if(e.code==='Space'&&app.route==='auction'&&!app.broadcastMode&&document.activeElement?.tagName!=='INPUT'){e.preventDefault();document.querySelector('[data-action="bid"]')?.click()}if((e.key==='b'||e.key==='B')&&app.route==='auction'&&document.activeElement?.tagName!=='INPUT'){app.broadcastMode=!app.broadcastMode;render()}});
 window.addEventListener('beforeunload',()=>{try{app.network?.close?.()}catch{}});
 
 render();
