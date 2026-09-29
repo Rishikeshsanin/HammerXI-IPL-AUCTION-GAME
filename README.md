@@ -1,4 +1,4 @@
-# HammerXI
+# HammerXI V2
 
 A private, browser-to-browser cricket auction game for 2–10 friends.
 
@@ -42,3 +42,17 @@ HammerXI does not intentionally persist player names, team names, room state or 
 
 ## Disclaimer
 Unofficial fan-made cricket auction game. Not affiliated with or endorsed by BCCI, IPL, or any franchise.
+
+
+## V2 game flow
+
+HammerXI V2 turns the auction into a complete one-session franchise night:
+
+1. **Sequenced auction sets** — Marquee, Wicketkeepers, Batters, All-Rounders, Spin Bowlers, Pace Bowlers.
+2. **Host pause / continue** — the auction clock freezes and resumes from the remaining time.
+3. **Optional Trade Window** — host can open it after the auction or skip it immediately. V2 uses owner-approved one-player-for-one-player swaps.
+4. **Playing XI Builder** — each owner locks an XI of 11 with at most 4 overseas players, a captain and a wicketkeeper. Auto-pick is available for speed.
+5. **Auction Newspaper** — a locally generated post-auction front page plus downloadable poster.
+6. **Optional Hall of Fame** — controlled by the host from the lobby; when disabled the awards ceremony is omitted.
+
+All V2 room state remains ephemeral and browser-to-browser. HammerXI still has no account database or permanent auction history.
