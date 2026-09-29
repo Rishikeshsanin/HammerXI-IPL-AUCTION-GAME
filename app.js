@@ -242,6 +242,83 @@ function renderBroadcastAuction(){
   </main></div>`;
 }
 
+
+function ensurePostAuction(g){
+  g.postAuction=g.postAuction||{tradeProposals:[],tradesCompleted:0};
+  g.teams.forEach(t=>{t.xi=t.xi||{playerIds:[],captainId:null,wicketkeeperId:null,locked:false}});
+  return g.postAuction;
+}
+function renderPostAuction(){
+  const g=app.game;ensurePostAuction(g);
+  return `${header()}<div class="post-shell"><section class="card post-hero"><div class="eyebrow">AUCTION COMPLETE</div><h1>Before the final XI...</h1><p>The squads are bought. The host can open a quick player-for-player trade window, or skip it and move straight to Playing XI selection.</p><div class="post-flow"><span class="done">Auction ✓</span><span>Trade window</span><span>Playing XI</span><span>Final reveal</span></div>${amHost()?`<div class="post-actions"><button class="btn primary" data-action="open-trades">🤝 Open trade window</button><button class="btn secondary" data-action="skip-trades">Skip trades → Playing XI</button></div>`:`<div class="waiting"><span class="spinner"></span><span>Waiting for the host to choose the next stage…</span></div>`}</section></div>${footer()}`;
+}
+function renderTradeWindow(){
+  const g=app.game,post=ensurePostAuction(g),me=getMyTeam();
+  const myPlayers=me?.players||[];
+  const targetOptions=g.teams.filter(t=>t.id!==me?.id).flatMap(t=>t.players.map(b=>`<option value="${t.id}::${b.playerId}">${esc(t.name)} — ${esc(byId(b.playerId)?.name||'Player')}</option>`)).join('');
+  const myOptions=myPlayers.map(b=>`<option value="${b.playerId}">${esc(byId(b.playerId)?.name||'Player')}</option>`).join('');
+  const proposals=post.tradeProposals.slice().reverse().map(tr=>{
+    const from=g.teams.find(t=>t.id===tr.fromTeamId),to=g.teams.find(t=>t.id===tr.toTeamId),offer=byId(tr.offerPlayerId),want=byId(tr.targetPlayerId);
+    const incoming=tr.toTeamId===me?.id&&tr.status==='pending';
+    return `<div class="trade-row ${tr.status}"><div><strong>${esc(from?.name||'Team')}</strong><span>offers ${esc(offer?.name||'Player')} for ${esc(want?.name||'Player')} · ${esc(to?.name||'Team')}</span></div><b>${tr.status.toUpperCase()}</b>${incoming?`<div class="trade-actions"><button class="btn small primary" data-action="trade-accept" data-trade="${tr.id}">Accept</button><button class="btn small ghost" data-action="trade-reject" data-trade="${tr.id}">Reject</button></div>`:''}</div>`;
+  }).join('');
+  return `${header()}<div class="trade-shell"><section class="card trade-market"><div class="row-between"><div><div class="eyebrow">OPTIONAL TRADE WINDOW</div><h1>Make the last deal.</h1><p class="muted">V2 trades are simple one-player-for-one-player swaps. Both squads must still respect the overseas limit.</p></div><span class="mini-pill">${post.tradesCompleted} completed</span></div>
+  <div class="trade-builder"><div class="field"><label class="label">Offer from ${esc(me?.name||'your team')}</label><select class="select" id="trade-offer">${myOptions||'<option>No players</option>'}</select></div><div class="trade-swap">⇄</div><div class="field"><label class="label">Player you want</label><select class="select" id="trade-target">${targetOptions||'<option>No trade targets</option>'}</select></div><button class="btn primary" data-action="trade-propose" ${!myPlayers.length||!targetOptions?'disabled':''}>Send trade offer</button></div>
+  <div class="section-label" style="margin-top:24px">Trade desk</div><div class="trade-list">${proposals||'<div class="empty">No offers yet.</div>'}</div></section>
+  <aside class="card trade-side"><h3>Trade rules</h3><p>• Player-for-player only<br>• Receiver must accept<br>• Overseas squad limits still apply<br>• Host can end the window at any time</p>${amHost()?`<button class="btn secondary" data-action="close-trades" style="width:100%;margin-top:16px">End trades → Playing XI</button>`:'<div class="waiting"><span class="spinner"></span><span>Host controls when trading ends.</span></div>'}</aside></div>${footer()}`;
+}
+function xiSelectedOverseas(team){return (team.xi?.playerIds||[]).filter(id=>byId(id)?.overseas).length}
+function autoPickXi(team){
+  ensurePostAuction(app.game);
+  const sorted=team.players.map(b=>byId(b.playerId)).filter(Boolean).sort((a,b)=>b.rating-a.rating);
+  const chosen=[],wk=sorted.find(p=>p.role==='WK');
+  if(wk){chosen.push(wk.id)}
+  for(const p of sorted){
+    if(chosen.includes(p.id)||chosen.length>=11)continue;
+    const os=chosen.filter(id=>byId(id)?.overseas).length;
+    if(p.overseas&&os>=4)continue;
+    chosen.push(p.id);
+  }
+  team.xi.playerIds=chosen.slice(0,11);
+  team.xi.captainId=team.xi.playerIds[0]||null;
+  team.xi.wicketkeeperId=team.xi.playerIds.find(id=>byId(id)?.role==='WK')||null;
+  team.xi.locked=false;
+}
+function validateXi(team){
+  const ids=team.xi?.playerIds||[];
+  if(ids.length!==11)return [false,'Pick exactly 11 players'];
+  if(xiSelectedOverseas(team)>4)return [false,'Playing XI can have at most 4 overseas players'];
+  if(!team.xi.captainId||!ids.includes(team.xi.captainId))return [false,'Choose a captain from the XI'];
+  const squadHasWK=team.players.some(b=>byId(b.playerId)?.role==='WK');
+  if(squadHasWK&&!ids.some(id=>byId(id)?.role==='WK'))return [false,'Include at least one wicketkeeper'];
+  if(ids.some(id=>byId(id)?.role==='WK')&&(!team.xi.wicketkeeperId||!ids.includes(team.xi.wicketkeeperId)||byId(team.xi.wicketkeeperId)?.role!=='WK'))return [false,'Choose the wicketkeeper'];
+  return [true,''];
+}
+function renderXiBuilder(){
+  const g=app.game;ensurePostAuction(g);const me=getMyTeam(),xi=me?.xi||{playerIds:[]},ids=xi.playerIds||[];
+  const squad=(me?.players||[]).map(b=>{const p=byId(b.playerId),selected=ids.includes(b.playerId);return `<button class="xi-player ${selected?'selected':''}" data-action="xi-toggle" data-player="${b.playerId}" ${xi.locked?'disabled':''}><span class="xi-check">${selected?'✓':'+'}</span><div><strong>${esc(p?.name||'Player')}</strong><span>${esc(ROLE_LABEL[p?.role]||'Player')} · ${p?.overseas?'Overseas':'India'} · Rating ${p?.rating||'—'}</span></div></button>`}).join('');
+  const selectedPlayers=ids.map(id=>byId(id)).filter(Boolean);
+  const capOptions=selectedPlayers.map(p=>`<option value="${p.id}" ${xi.captainId===p.id?'selected':''}>${esc(p.name)}</option>`).join('');
+  const wkOptions=selectedPlayers.filter(p=>p.role==='WK').map(p=>`<option value="${p.id}" ${xi.wicketkeeperId===p.id?'selected':''}>${esc(p.name)}</option>`).join('');
+  const status=g.teams.map(t=>`<div class="xi-status">${crest(t,'sm')}<span>${esc(t.name)}</span><b class="${t.xi?.locked?'ok':''}">${t.xi?.locked?'LOCKED':`${t.xi?.playerIds?.length||0}/11`}</b></div>`).join('');
+  const [valid,why]=validateXi(me);
+  return `${header()}<div class="xi-shell"><section class="card xi-main"><div class="row-between"><div><div class="eyebrow">PLAYING XI BUILDER</div><h1>${esc(me?.name||'Your XI')}</h1><p class="muted">Pick 11. Maximum 4 overseas players. Choose your captain and wicketkeeper.</p></div><div class="xi-count"><strong>${ids.length}/11</strong><span>${xiSelectedOverseas(me)}/4 overseas</span></div></div><div class="xi-grid">${squad}</div></section>
+  <aside class="card xi-side"><div class="section-label">XI controls</div><button class="btn secondary" data-action="xi-auto" style="width:100%" ${xi.locked?'disabled':''}>Auto-pick strongest XI</button><div class="field" style="margin-top:14px"><label class="label">Captain</label><select class="select" id="xi-captain" ${xi.locked||!capOptions?'disabled':''}><option value="">Choose captain</option>${capOptions}</select></div><div class="field"><label class="label">Wicketkeeper</label><select class="select" id="xi-keeper" ${xi.locked||!wkOptions?'disabled':''}><option value="">Choose keeper</option>${wkOptions}</select></div><button class="btn primary" data-action="xi-lock" style="width:100%;margin-top:12px" ${xi.locked||!valid?'disabled':''}>${xi.locked?'XI locked':'Lock Playing XI'}</button>${!valid&&!xi.locked?`<div class="reason">${esc(why)}</div>`:''}<div class="section-label" style="margin-top:22px">Room status</div><div class="xi-status-list">${status}</div>${amHost()?`<button class="btn ghost" data-action="xi-autofill-all" style="width:100%;margin-top:12px">Auto-fill unlocked teams</button><button class="btn primary" data-action="reveal-results" style="width:100%;margin-top:8px" ${g.teams.every(t=>t.xi?.locked)?'':'disabled'}>Reveal final results</button>`:'<div class="waiting" style="margin-top:14px"><span class="spinner"></span><span>Waiting for every team to lock an XI.</span></div>'}</aside></div>${footer()}`;
+}
+function newspaperData(g){
+  const sold=g.auction?.sold||[],post=ensurePostAuction(g);
+  const biggest=sold.length?[...sold].sort((a,b)=>b.price-a.price)[0]:null;
+  const bp=biggest?byId(biggest.playerId):null,bt=biggest?g.teams.find(t=>t.id===biggest.teamId):null;
+  const spender=[...g.teams].sort((a,b)=>(g.settings.purse-b.budget)-(g.settings.purse-a.budget))[0];
+  const bidEntry=Object.entries(g.stats?.bidCounts||{}).sort((a,b)=>b[1]-a[1])[0];
+  const bidder=bidEntry?g.teams.find(t=>t.id===bidEntry[0]):null;
+  return {biggest,bp,bt,spender,bidder,bids:bidEntry?.[1]||0,trades:post.tradesCompleted||0,wars:sold.filter(x=>x.war).length};
+}
+function renderNewspaper(g){
+  const n=newspaperData(g);
+  return `<section class="card newspaper"><div class="newspaper-mast"><span>HAMMERXI</span><strong>THE AUCTION DAILY</strong><small>ROOM ${esc(g.roomCode)} · V2 EDITION</small></div><div class="newspaper-grid"><article class="newspaper-lead"><div class="newspaper-kicker">FRONT PAGE</div><h2>${n.bp?`${esc(n.bp.name)} goes for ${fmtPrice(n.biggest.price)}`:'The hammer falls on another auction night'}</h2><p>${n.bt?`${esc(n.bt.name)} landed the night's biggest purchase after the live auction floor closed.`:'Final squads are now locked.'}</p></article><article><div class="newspaper-kicker">MARKET</div><h3>${esc(n.spender?.name||'Franchise')} spent big</h3><p>${fmtPrice(round2(g.settings.purse-(n.spender?.budget||g.settings.purse)))} committed across the squad.</p></article><article><div class="newspaper-kicker">AUCTION DESK</div><h3>${n.wars} bidding war${n.wars===1?'':'s'}</h3><p>${n.bidder?`${esc(n.bidder.name)} placed ${n.bids} accepted bids.`:'Every franchise played its part.'}</p></article><article><div class="newspaper-kicker">TRANSFER DESK</div><h3>${n.trades} completed trade${n.trades===1?'':'s'}</h3><p>The optional trade window closed before Playing XIs were locked.</p></article></div><button class="btn secondary" data-action="download-newspaper">Download newspaper poster</button></section>`;
+}
+
 function bestBuy(team){if(!team.players.length)return null;return [...team.players].sort((a,b)=>{const pa=byId(a.playerId),pb=byId(b.playerId);return (pb.rating/(b.price+.25))-(pa.rating/(a.price+.25))})[0]}
 function renderResults(){
   const g=app.game,me=getMyTeam();
