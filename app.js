@@ -175,4 +175,107 @@ function render(){
   const root=$('#app');
   const page=app.route==='home'?renderHome():app.route==='create'?renderCreate():app.route==='join'?renderJoin():app.route==='lobby'?renderLobby():app.route==='auction'?renderAuction():app.route==='results'?renderResults():renderHome();
   root.innerHTML=`<div class="shell">${page}</div>${rulesModal()}`;
-  
+  if(app.route==='auction')updateTimerDom();
+}
+
+function identityFromDraft(){
+  const d=app.draft; const ownerName=d.ownerName.trim(); if(!ownerName)throw new Error('Enter your name');
+  if(d.teamMode==='franchise'){
+    const f=FRANCHISES.find(x=>x.id===d.franchiseId); if(!f)throw new Error('Choose a franchise');
+    return {ownerName,templateId:f.id,name:f.name,colors:f.colors,mark:f.mark,kind:'franchise'};
+  }
+  const name=d.customName.trim(); if(name.length<2)throw new Error('Enter a custom franchise name'); const l=LOGO_PRESETS.find(x=>x.id===d.logoId)||LOGO_PRESETS[0];
+  return {ownerName,templateId:`custom:${l.id}`,name,colors:l.colors,mark:l.symbol,kind:'custom'};
+}
+
+async function initNetwork(code){
+  await closeNetwork(); app.networkStatus='connecting'; render();
+  let net;
+  try{
+    const mod=await Promise.race([import('https://esm.run/trystero'),new Promise((_,rej)=>setTimeout(()=>rej(new Error('P2P module timeout')),8500))]);
+    const selfId=mod.selfId; const room=mod.joinRoom({appId:'hammerxi-auction-night-v1',password:`hx-${code}`},code); const wire=room.makeAction('wire'); const peers=new Set();
+    net={kind:'p2p',selfId,roomCode:code,peers,send:(type,payload,target)=>wire.send({type,payload},{...(target?{target}: {})}),close:()=>room.leave()};
+    wire.onMessage=(packet,{peerId})=>receiveNetwork(packet,peerId);
+    room.onPeerJoin=peerId=>{if(!peers.has(peerId)){peers.add(peerId);onPeerJoin(peerId)}};
+    room.onPeerLeave=peerId=>{peers.delete(peerId);onPeerLeave(peerId)};
+    app.networkStatus='online';
+  }catch(err){
+    const selfId=`local-${uid()}`; const bc=new BroadcastChannel(`hammerxi-${code}`); const peers=new Set();
+    net={kind:'local',selfId,roomCode:code,peers,send:(type,payload,target)=>bc.postMessage({from:selfId,target,type,payload}),close:()=>bc.close()};
+    bc.onmessage=e=>{const m=e.data||{};if(m.from===selfId||m.target&&m.target!==selfId)return;if(m.type==='presence'){if(!peers.has(m.from)){peers.add(m.from);onPeerJoin(m.from)};bc.postMessage({from:selfId,target:m.from,type:'presence-ack'});return}if(m.type==='presence-ack'){if(!peers.has(m.from)){peers.add(m.from);onPeerJoin(m.from)};return}receiveNetwork({type:m.type,payload:m.payload},m.from)};
+    setTimeout(()=>bc.postMessage({from:selfId,type:'presence'}),50); app.networkStatus='local';
+    toast('P2P network unavailable','Using same-browser local fallback for testing.','err');
+  }
+  app.network=net; render(); return net;
+}
+async function closeNetwork(){
+  clearInterval(app.hostClock);clearInterval(app.timerClock);clearTimeout(app.advanceTimer);app.hostClock=app.timerClock=app.advanceTimer=null;
+  try{app.network?.close?.()}catch{} app.network=null;app.networkStatus='offline';
+}
+function onPeerJoin(peerId){
+  if(!app.network)return;
+  if(app.game&&amHost()){
+    // New peers must explicitly request a franchise before receiving room state.
+  } else if(app.pendingJoin&&app.identity){setTimeout(()=>app.network?.send('join',app.identity,peerId),120)}
+}
+function onPeerLeave(peerId){
+  if(!app.game)return;
+  const t=app.game.teams.find(x=>x.ownerPeerId===peerId);if(t)t.connected=false;
+  if(app.game.hostPeerId===peerId){
+    const candidates=app.game.teams.filter(x=>x.connected!==false).map(x=>x.ownerPeerId).filter(Boolean); if(app.network?.selfId&&!candidates.includes(app.network.selfId))candidates.push(app.network.selfId);
+    const next=[...new Set(candidates)].sort()[0]; if(next){app.game.hostPeerId=next; addActivity(`Host disconnected. ${app.game.teams.find(x=>x.ownerPeerId===next)?.ownerName||'A peer'} is now auction host.`,'sold');}
+  }
+  if(amHost()){broadcast();startHostClock()} render();
+}
+function receiveNetwork(packet,peerId){
+  if(!packet?.type)return;
+  const {type,payload}=packet;
+  if(type==='join'&&app.game&&amHost())handleJoin(peerId,payload);
+  else if(type==='ack'&&app.pendingJoin){
+    if(payload.accepted){app.game=payload.game;app.pendingJoin=false;app.route=app.game.phase==='lobby'?'lobby':app.game.phase;startTimerClock();render();toast('Joined the auction',`You are ${getMyTeam()?.name||'in the room'}.`,'ok')}
+    else {toast('Could not join',payload.reason||'Room rejected the request.','err')}
+  } else if(type==='cmd'&&app.game&&amHost())handleCommand(peerId,payload);
+  else if(type==='snapshot'&&app.game){
+    const oldStatus=app.game?.auction?.status,oldBid=app.game?.auction?.currentBid; app.game=payload;
+    app.route=payload.phase==='lobby'?'lobby':payload.phase;
+    if(payload.auction?.status==='sold'&&oldStatus!=='sold')beep('sold');else if(payload.auction?.currentBid!==oldBid)beep('bid');
+    startTimerClock();render();
+  } else if(type==='notice')toast(payload.title||'Auction',payload.message||'',payload.kind||'');
+}
+function broadcast(){if(!app.game||!app.network)return;app.network.send('snapshot',structuredClone(app.game));render()}
+function sendNotice(peerId,title,message,kind='err'){if(peerId===app.network?.selfId)toast(title,message,kind);else app.network?.send('notice',{title,message,kind},peerId)}
+function addActivity(text,kind=''){if(!app.game)return;app.game.activity.push({id:uid(),text,kind,at:Date.now()});app.game.activity=app.game.activity.slice(-60)}
+
+function handleJoin(peerId,ident){
+  const g=app.game;if(g.phase!=='lobby')return sendNotice(peerId,'Auction already started','This room is no longer accepting franchises.');
+  const existing=g.teams.find(t=>t.ownerPeerId===peerId);if(existing){app.network.send('ack',{accepted:true,game:structuredClone(g)},peerId);return}
+  if(g.teams.length>=g.settings.maxTeams)return app.network.send('ack',{accepted:false,reason:'The room is full.'},peerId);
+  const sameName=g.teams.some(t=>t.name.toLowerCase()===String(ident.name).toLowerCase()); if(sameName)return app.network.send('ack',{accepted:false,reason:'That franchise name is already taken. Pick another.'},peerId);
+  if(ident.kind==='franchise'&&g.teams.some(t=>t.kind==='franchise'&&t.templateId===ident.templateId))return app.network.send('ack',{accepted:false,reason:'That IPL franchise is already taken in this room.'},peerId);
+  const t={id:uid(),ownerPeerId:peerId,ownerName:String(ident.ownerName).slice(0,22),name:String(ident.name).slice(0,26),colors:ident.colors,mark:ident.mark,kind:ident.kind,templateId:ident.templateId,budget:g.settings.purse,players:[],connected:true};
+  g.teams.push(t);addActivity(`${t.ownerName} joined as ${t.name}.`);app.network.send('ack',{accepted:true,game:structuredClone(g)},peerId);broadcast();
+}
+function handleCommand(peerId,cmd){
+  if(!app.game||!cmd)return;
+  const team=app.game.teams.find(t=>t.ownerPeerId===peerId);
+  if(cmd.type==='setting')return applySetting(peerId,cmd);
+  if(cmd.type==='start')return startAuction(peerId);
+  if(cmd.type==='chat'){const text=String(cmd.text||'').trim().slice(0,70);if(text&&team){addActivity(`${team.ownerName}: ${text}`,'');broadcast()}return}
+  if(cmd.type==='reaction'){if(team){addActivity(`${team.ownerName} reacted ${String(cmd.value||'').slice(0,4)}`);broadcast()}return}
+  if(app.game.phase!=='auction'||!team)return;
+  if(cmd.type==='bid')placeBid(peerId,team);else if(cmd.type==='pass')passLot(peerId,team);else if(cmd.type==='pause'&&peerId===app.game.hostPeerId)togglePause();else if(cmd.type==='force-next'&&peerId===app.game.hostPeerId){app.game.auction.highestTeamId?resolveSold():resolveUnsold(true)};
+}
+function command(cmd){if(!app.game||!app.network)return;if(amHost())handleCommand(app.network.selfId,cmd);else app.network.send('cmd',cmd,app.game.hostPeerId)}
+function applySetting(peerId,cmd){
+  const g=app.game;if(peerId!==g.hostPeerId||g.phase!=='lobby')return;const key=cmd.key;let value=Number(cmd.value);
+  if(key==='maxTeams')value=clamp(value,Math.max(2,g.teams.length),10); else if(key==='squadSize')value=clamp(value,15,20);else if(key==='purse'&&!([100,125,150].includes(value)))return;else if(key==='timerSeconds'&&!([8,10,12,15,20].includes(value)))return;else if(!['maxTeams','squadSize','purse','timerSeconds'].includes(key))return;
+  g.settings[key]=value;g.settings.overseasLimit=g.settings.squadSize>=18?7:6;if(key==='purse')g.teams.forEach(t=>{if(!t.players.length)t.budget=value});broadcast();
+}
+function buildPool(count,seed){
+  const n=POOL_SIZE_BY_TEAMS[clamp(count,2,10)]; const ranked=[...PLAYERS].sort((a,b)=>b.rating-a.rating||a.name.localeCompare(b.name)); const top=ranked.slice(0,12); const rest=ranked.slice(12); const bands=[];
+  for(let i=0;i<rest.length;i+=20)bands.push(...shuffle(rest.slice(i,i+20),`${seed}-${i}`));return [...top,...bands].slice(0,n);
+}
+function buildQueue(pool,seed){
+  const marquee=shuffle([...pool].sort((a,b)=>b.rating-a.rating).slice(0,12),`${seed}-marquee`).map(p=>({playerId:p.id,setLabel:'Marquee'}));
+  const rem=pool.filter(p=>!marquee.some(m=>m.playerId===p.id)); const labels={BAT:'Batters',AR:'All-Rounders',WK:'Wicketkeepers',BOWL:'Bowlers'}; const roles=['BAT','AR','WK','BOWL']; const queues=roles.map(r=>shuffle(rem.filter(p=>p.role===r),`${seed}-${r}`)); const out=[...marquee];
+  le
