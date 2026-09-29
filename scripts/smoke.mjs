@@ -20,7 +20,7 @@ globalThis.document = {
 };
 
 globalThis.window = { addEventListener() {} };
-globalThis.navigator = {};
+Object.defineProperty(globalThis, 'navigator', { value: {}, configurable: true });
 globalThis.location = { host: 'smoke.hammerxi.test' };
 
 await import('../app.js?startup-smoke=1');
