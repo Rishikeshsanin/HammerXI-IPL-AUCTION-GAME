@@ -459,13 +459,13 @@ function proposeTrade(team,cmd){
   const busy=post.tradeProposals.some(x=>x.status==='pending'&&[x.offerPlayerId,x.targetPlayerId].some(id=>id===cmd.offerPlayerId||id===cmd.targetPlayerId));
   if(busy)return sendNotice(team.ownerPeerId,'Trade blocked','One of those players is already in a pending offer.');
   const tr={id:uid(),fromTeamId:team.id,toTeamId:to.id,offerPlayerId:cmd.offerPlayerId,targetPlayerId:cmd.targetPlayerId,status:'pending',at:Date.now()};
-  post.tradeProposals.push(tr);addActivity(\`\${team.name} sent a trade offer to \${to.name}.\`,'bid');broadcast();
+  post.tradeProposals.push(tr);addActivity(`${team.name} sent a trade offer to ${to.name}.`,'bid');broadcast();
 }
 function respondTrade(team,cmd){
   const g=app.game;if(g.phase!=='trades')return;const post=ensurePostAuction(g),tr=post.tradeProposals.find(x=>x.id===cmd.tradeId&&x.status==='pending');
   if(!tr||tr.toTeamId!==team.id)return;
   const from=g.teams.find(t=>t.id===tr.fromTeamId),to=g.teams.find(t=>t.id===tr.toTeamId);if(!from||!to)return;
-  if(!cmd.accept){tr.status='rejected';addActivity(\`\${to.name} rejected a trade from \${from.name}.\`);broadcast();return}
+  if(!cmd.accept){tr.status='rejected';addActivity(`${to.name} rejected a trade from ${from.name}.`);broadcast();return}
   const fi=from.players.findIndex(b=>b.playerId===tr.offerPlayerId),ti=to.players.findIndex(b=>b.playerId===tr.targetPlayerId);
   if(fi<0||ti<0){tr.status='expired';broadcast();return}
   const offer=from.players[fi],want=to.players[ti],offerOS=byId(offer.playerId)?.overseas?1:0,wantOS=byId(want.playerId)?.overseas?1:0;
@@ -473,7 +473,7 @@ function respondTrade(team,cmd){
   if(fromOS>g.settings.overseasLimit||toOS>g.settings.overseasLimit){tr.status='blocked';sendNotice(team.ownerPeerId,'Trade blocked','The swap would break an overseas squad limit.');broadcast();return}
   from.players[fi]={...want,tradedFrom:to.id};to.players[ti]={...offer,tradedFrom:from.id};tr.status='accepted';post.tradesCompleted++;
   post.tradeProposals.forEach(x=>{if(x.status==='pending'&&x.id!==tr.id&&[x.offerPlayerId,x.targetPlayerId].some(id=>id===tr.offerPlayerId||id===tr.targetPlayerId))x.status='expired'});
-  addActivity(\`TRADE — \${from.name} and \${to.name} complete a player swap.\`,'sold');broadcast();
+  addActivity(`TRADE — ${from.name} and ${to.name} complete a player swap.`,'sold');broadcast();
 }
 function toggleXiPlayer(team,playerId){
   const g=app.game;if(g.phase!=='xi'||team.xi?.locked)return;ensurePostAuction(g);
@@ -492,7 +492,7 @@ function setXiRole(team,role,playerId){
 }
 function lockXi(team){
   if(app.game.phase!=='xi')return;const [ok,why]=validateXi(team);if(!ok)return sendNotice(team.ownerPeerId,'XI not ready',why);
-  team.xi.locked=true;addActivity(\`\${team.name} locked its Playing XI.\`,'sold');broadcast();
+  team.xi.locked=true;addActivity(`${team.name} locked its Playing XI.`,'sold');broadcast();
 }
 function autoFillAllXi(){
   const g=app.game;if(g.phase!=='xi')return;for(const t of g.teams){if(!t.xi?.locked){autoPickXi(t);const [ok]=validateXi(t);if(ok)t.xi.locked=true}}broadcast();
