@@ -51,7 +51,7 @@ const factory = new Function(
     ensurePostAuction, openTradeWindow, startXiBuilder, proposeTrade, respondTrade,
     autoPickXi, validateXi, xiTargetSize, lockXi, autoFillAllXi, revealResults,
     renderPostAuction, renderTradeWindow, renderXiBuilder, renderResults, renderBroadcastAuction, drawNewspaper,
-    applySetting, handleCommand, handleJoin, receiveNetwork, onPeerLeave, inviteUrl, applyInviteDeepLink, inviteUrl, applyInviteDeepLink
+    applySetting, handleCommand, handleJoin, receiveNetwork, onPeerLeave, inviteUrl, applyInviteDeepLink
   };`
 );
 
@@ -66,7 +66,7 @@ const {
   ensurePostAuction, openTradeWindow, startXiBuilder, proposeTrade, respondTrade,
   autoPickXi, validateXi, xiTargetSize, lockXi, autoFillAllXi, revealResults,
   renderPostAuction, renderTradeWindow, renderXiBuilder, renderResults, renderBroadcastAuction, drawNewspaper,
-  applySetting, handleCommand, handleJoin, receiveNetwork, onPeerLeave
+  applySetting, handleCommand, handleJoin, receiveNetwork, onPeerLeave, inviteUrl, applyInviteDeepLink
 } = engine;
 
 const sent = [];
