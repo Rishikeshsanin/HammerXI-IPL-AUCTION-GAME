@@ -1,4 +1,5 @@
 import { FRANCHISES, LOGO_PRESETS, PLAYERS, POOL_SIZE_BY_TEAMS, ROLE_LABEL } from './data.js';
+import { joinRoom as joinPeerRoom, selfId as peerSelfId } from 'trystero';
 
 const $ = s => document.querySelector(s);
 const esc = (v='') => String(v).replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));
@@ -192,8 +193,8 @@ async function initNetwork(code){
   await closeNetwork(); app.networkStatus='connecting'; render();
   let net;
   try{
-    const mod=await Promise.race([import('https://esm.run/trystero'),new Promise((_,rej)=>setTimeout(()=>rej(new Error('P2P module timeout')),8500))]);
-    const selfId=mod.selfId; const room=mod.joinRoom({appId:'hammerxi-auction-night-v1',password:`hx-${code}`},code); const wire=room.makeAction('wire'); const peers=new Set();
+    if(typeof RTCPeerConnection==='undefined' || typeof WebSocket==='undefined') throw new Error('This browser does not support required realtime APIs');
+    const selfId=peerSelfId; const room=joinPeerRoom({appId:'hammerxi-auction-night-v1',password:`hx-${code}`},code); const wire=room.makeAction('wire'); const peers=new Set();
     net={kind:'p2p',selfId,roomCode:code,peers,send:(type,payload,target)=>wire.send({type,payload},{...(target?{target}: {})}),close:()=>room.leave()};
     wire.onMessage=(packet,{peerId})=>receiveNetwork(packet,peerId);
     room.onPeerJoin=peerId=>{if(!peers.has(peerId)){peers.add(peerId);onPeerJoin(peerId)}};
@@ -204,7 +205,7 @@ async function initNetwork(code){
     net={kind:'local',selfId,roomCode:code,peers,send:(type,payload,target)=>bc.postMessage({from:selfId,target,type,payload}),close:()=>bc.close()};
     bc.onmessage=e=>{const m=e.data||{};if(m.from===selfId||m.target&&m.target!==selfId)return;if(m.type==='presence'){if(!peers.has(m.from)){peers.add(m.from);onPeerJoin(m.from)};bc.postMessage({from:selfId,target:m.from,type:'presence-ack'});return}if(m.type==='presence-ack'){if(!peers.has(m.from)){peers.add(m.from);onPeerJoin(m.from)};return}receiveNetwork({type:m.type,payload:m.payload},m.from)};
     setTimeout(()=>bc.postMessage({from:selfId,type:'presence'}),50); app.networkStatus='local';
-    toast('P2P network unavailable','Using same-browser local fallback for testing.','err');
+    toast('Internet P2P unavailable','This browser entered local test mode. It cannot discover a room hosted in another browser.','err');
   }
   app.network=net; render(); return net;
 }
