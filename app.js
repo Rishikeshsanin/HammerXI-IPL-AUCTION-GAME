@@ -334,4 +334,36 @@ function drawStory(team){
   x.fillStyle='#5f6a79';x.font='500 18px Segoe UI, Arial, sans-serif';x.fillText('No signup. No saved history. Just auction night.',72,1810);x.fillStyle='#ffffff';x.font='800 33px Segoe UI, Arial, sans-serif';x.fillText(location.host || 'HammerXI',72,1860);
   c.toBlob(blob=>{const url=URL.createObjectURL(blob),ael=document.createElement('a');ael.href=url;ael.download=`hammerxi-${team.name.toLowerCase().replace(/[^a-z0-9]+/g,'-')}-story.png`;ael.click();setTimeout(()=>URL.revokeObjectURL(url),1500)},'image/png');
 }
-function statBox(x,left,top,label,value){x.fillStyle='#0d131c';roundRect(x,left,top,286,135,18,true);x.fillStyle='#7
+function statBox(x,left,top,label,value){x.fillStyle='#0d131c';roundRect(x,left,top,286,135,18,true);x.fillStyle='#707c8d';x.font='700 17px Segoe UI, Arial, sans-serif';x.fillText(label,left+24,top+38);x.fillStyle='#fff';x.font='800 32px Segoe UI, Arial, sans-serif';x.fillText(value,left+24,top+90)}
+function roundRect(ctx,x,y,w,h,r,fill){ctx.beginPath();ctx.roundRect?ctx.roundRect(x,y,w,h,r):(ctx.rect(x,y,w,h));if(fill)ctx.fill()}
+function wrapText(ctx,text,x,y,maxWidth,lineHeight,maxLines=3){const words=text.split(' ');let line='',lines=[];for(const word of words){const test=line?line+' '+word:word;if(ctx.measureText(test).width>maxWidth&&line){lines.push(line);line=word}else line=test}if(line)lines.push(line);lines.slice(0,maxLines).forEach((l,i)=>ctx.fillText(l,x,y+i*lineHeight))}
+function downloadCsv(){const g=app.game;const rows=[['Team','Owner','Player','Role','Overseas','Price (Cr)']];g.teams.forEach(t=>t.players.forEach(b=>{const p=byId(b.playerId);rows.push([t.name,t.ownerName,p.name,ROLE_LABEL[p.role],p.overseas?'Yes':'No',b.price])}));const csv=rows.map(r=>r.map(v=>`"${String(v).replace(/"/g,'""')}"`).join(',')).join('\n');const blob=new Blob([csv],{type:'text/csv'}),url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=`hammerxi-${g.roomCode}-auction.csv`;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000)}
+
+async function createRoom(){
+  try{app.identity=identityFromDraft();const code=roomCode();const net=await initNetwork(code);const t={id:uid(),ownerPeerId:net.selfId,ownerName:app.identity.ownerName,name:app.identity.name,colors:app.identity.colors,mark:app.identity.mark,kind:app.identity.kind,templateId:app.identity.templateId,budget:Number(app.draft.purse),players:[],connected:true};app.game={version:1,roomCode:code,hostPeerId:net.selfId,phase:'lobby',settings:{maxTeams:Number(app.draft.maxTeams),squadSize:Number(app.draft.squadSize),purse:Number(app.draft.purse),timerSeconds:Number(app.draft.timerSeconds),overseasLimit:Number(app.draft.squadSize)>=18?7:6},teams:[t],activity:[{id:uid(),text:`${t.ownerName} created the auction room.`,kind:'',at:Date.now()}],auction:null};app.route='lobby';app.pendingJoin=false;render();toast('Room created',`Invite friends with code ${code}.`,'ok')}catch(e){toast('Check your setup',e.message,'err')}
+}
+async function joinRoom(){
+  try{app.identity=identityFromDraft();const code=app.draft.joinCode.trim().toUpperCase();if(!/^[A-Z2-9]{6}$/.test(code))throw new Error('Enter the 6-character room code');app.pendingJoin=true;app.game=null;app.route='lobby';const net=await initNetwork(code);setTimeout(()=>{if(app.pendingJoin)net.send('join',app.identity)},700);setTimeout(()=>{if(app.pendingJoin)toast('Still looking for host','Check the code and make sure the host has the lobby open.','err')},7000)}catch(e){app.pendingJoin=false;toast('Could not join',e.message,'err')}
+}
+async function leaveRoom(){await closeNetwork();app.game=null;app.identity=null;app.pendingJoin=false;app.route='home';render()}
+
+// UI events
+document.addEventListener('input',e=>{const k=e.target?.dataset?.draft;if(k){let v=e.target.value;if(['maxTeams','squadSize','purse','timerSeconds'].includes(k))v=Number(v);app.draft[k]=v}});
+document.addEventListener('change',e=>{const k=e.target?.dataset?.draft;if(k){let v=e.target.value;if(['maxTeams','squadSize','purse','timerSeconds'].includes(k))v=Number(v);app.draft[k]=v;if(app.route==='create'&&['maxTeams','squadSize','purse','timerSeconds'].includes(k))render()}const s=e.target?.dataset?.setting;if(s)command({type:'setting',key:s,value:Number(e.target.value)})});
+document.addEventListener('submit',e=>{if(e.target.id==='create-form'){e.preventDefault();createRoom()}if(e.target.id==='join-form'){e.preventDefault();joinRoom()}});
+document.addEventListener('click',e=>{
+  const b=e.target.closest('[data-action]');if(!b)return;const a=b.dataset.action;
+  if(a==='home'){if(app.game)return toast('Room is active','Use “Leave room” if you want to end this session.');app.route='home';render()}
+  else if(a==='go-create'){app.route='create';render()}else if(a==='go-join'){app.route='join';render()}
+  else if(a==='rules'){app.rules=true;render()}else if(a==='close-rules'){app.rules=false;render()}else if(a==='sound'){app.sound=!app.sound;render();if(app.sound)beep('bid')}
+  else if(a==='team-mode'){app.draft.teamMode=b.dataset.mode;render()}else if(a==='pick-franchise'){app.draft.franchiseId=b.dataset.id;render()}else if(a==='pick-logo'){app.draft.logoId=b.dataset.id;render()}
+  else if(a==='copy-room'){navigator.clipboard?.writeText(app.game.roomCode);toast('Invite code copied',app.game.roomCode,'ok')}
+  else if(a==='start-auction')command({type:'start'})else if(a==='bid')command({type:'bid'})else if(a==='pass')command({type:'pass'})
+  else if(a==='pause')command({type:'pause'})else if(a==='force-next')command({type:'force-next'})
+  else if(a==='send-chat'){const input=$('#chat-input');const text=input?.value?.trim();if(text){command({type:'chat',text});input.value=''}}
+  else if(a==='reaction')command({type:'reaction',value:b.dataset.value})else if(a==='story'){const t=app.game.teams.find(x=>x.id===b.dataset.team);if(t)drawStory(t)}else if(a==='csv')downloadCsv()else if(a==='leave')leaveRoom();
+});
+document.addEventListener('keydown',e=>{if(e.key==='Enter'&&e.target?.id==='chat-input'){e.preventDefault();document.querySelector('[data-action="send-chat"]')?.click()}if(e.code==='Space'&&app.route==='auction'&&document.activeElement?.tagName!=='INPUT'){e.preventDefault();document.querySelector('[data-action="bid"]')?.click()}});
+window.addEventListener('beforeunload',()=>{try{app.network?.close?.()}catch{}});
+
+render();
