@@ -3,10 +3,12 @@ import { readFile } from 'node:fs/promises';
 const app = await readFile('app.js', 'utf8');
 const pkg = JSON.parse(await readFile('package.json', 'utf8'));
 const ceremony = await readFile('ceremony.js', 'utf8');
+const versionFile = (await readFile('VERSION', 'utf8')).trim();
 
 const must = (ok, message) => { if (!ok) throw new Error(message); };
 
 must(pkg.version === '2.0.0', 'package version must be 2.0.0');
+must(versionFile === '2.0.0', 'VERSION file must be 2.0.0');
 for (const token of [
   "hammerxi-auction-night-v2",
   "Wicketkeepers",
