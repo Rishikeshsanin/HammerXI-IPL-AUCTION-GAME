@@ -37,10 +37,11 @@ const factory = new Function(
   `${source}
   return {
     app, buildPool, buildQueue, startAuction, togglePause, passLot, placeBid, canTeamBid,
-    finishAuction, ensurePostAuction, openTradeWindow, startXiBuilder, proposeTrade, respondTrade,
+    updateBiddingWar, resolveSold, resolveUnsold, advancePlayer, finishAuction,
+    ensurePostAuction, openTradeWindow, startXiBuilder, proposeTrade, respondTrade,
     autoPickXi, validateXi, xiTargetSize, lockXi, autoFillAllXi, revealResults,
-    renderPostAuction, renderTradeWindow, renderXiBuilder, renderResults,
-    applySetting, handleCommand
+    renderPostAuction, renderTradeWindow, renderXiBuilder, renderResults, renderBroadcastAuction,
+    applySetting, handleCommand, handleJoin, receiveNetwork, onPeerLeave
   };`
 );
 
@@ -51,10 +52,11 @@ const engine = factory(
 );
 const {
   app, buildPool, buildQueue, startAuction, togglePause, passLot, placeBid, canTeamBid,
-  finishAuction, ensurePostAuction, openTradeWindow, startXiBuilder, proposeTrade, respondTrade,
+  updateBiddingWar, resolveSold, resolveUnsold, advancePlayer, finishAuction,
+  ensurePostAuction, openTradeWindow, startXiBuilder, proposeTrade, respondTrade,
   autoPickXi, validateXi, xiTargetSize, lockXi, autoFillAllXi, revealResults,
-  renderPostAuction, renderTradeWindow, renderXiBuilder, renderResults,
-  applySetting, handleCommand
+  renderPostAuction, renderTradeWindow, renderXiBuilder, renderResults, renderBroadcastAuction,
+  applySetting, handleCommand, handleJoin, receiveNetwork, onPeerLeave
 } = engine;
 
 const sent = [];
@@ -143,10 +145,40 @@ const player = PLAYERS.find(p=>p.id===app.game.auction.queue[app.game.auction.in
 const [canLeadAgain] = canTeamBid(liveTeam,player,app.game.auction.currentBid,app.game);
 eq(canLeadAgain,false,'Current leader cannot bid against itself');
 
+// A genuine alternating two-team sequence must activate BIDDING WAR.
+for (let i=0;i<4;i++) {
+  const bidder = i%2===0 ? peerTeam : liveTeam;
+  placeBid(bidder.ownerPeerId,bidder);
+}
+ok(app.game.auction.war?.active===true,'Five alternating accepted bids must activate BIDDING WAR');
+ok(renderBroadcastAuction().includes('BIDDING WAR'),'Broadcast mode must surface active bidding war');
+
+// SOLD must charge the winner, add the player exactly once and record war win.
+const winner=app.game.teams.find(t=>t.id===app.game.auction.highestTeamId);
+const winnerBudget=winner.budget,winnerCount=winner.players.length,currentPrice=app.game.auction.currentBid;
+resolveSold();
+eq(app.game.auction.status,'sold','Resolved lot must become sold');
+eq(winner.players.length,winnerCount+1,'SOLD must add player to winner exactly once');
+eq(winner.budget,Math.round((winnerBudget-currentPrice+Number.EPSILON)*100)/100,'SOLD must deduct final price');
+ok(app.game.auction.sold.at(-1)?.war===true,'SOLD record must preserve bidding-war flag');
+clearTimeout(app.advanceTimer); app.advanceTimer=null;
+
 // Host-only pause through command path.
 const pausedBefore=app.game.auction.paused;
 handleCommand('peer2',{type:'pause'});
 eq(app.game.auction.paused,pausedBefore,'Non-host pause command must be ignored');
+
+// UNSOLD final lot must enter accelerated recall when squads still have room.
+const recallPlayer=PLAYERS.find(p=>!winner.players.some(x=>x.playerId===p.id));
+app.game.auction.queue=[{playerId:recallPlayer.id,setLabel:'QA Final Lot',category:'Batters'}];
+app.game.auction.index=0;app.game.auction.round=1;app.game.auction.unsold=[];app.game.auction.status='live';app.game.auction.highestTeamId=null;app.game.auction.passedTeamIds=[];
+resolveUnsold();
+eq(app.game.auction.status,'unsold','No-bid lot must resolve UNSOLD');
+ok(app.game.auction.unsold.includes(recallPlayer.id),'Round-one unsold player must enter recall list');
+clearTimeout(app.advanceTimer);app.advanceTimer=null;
+advancePlayer();
+eq(app.game.auction.round,2,'End of first round with unsold players must start recall');
+eq(app.game.auction.queue[0].setLabel,'Accelerated Recall','Recall queue must be labelled clearly');
 
 // Post-auction route must not jump directly to results.
 clearInterval(app.hostClock); clearInterval(app.timerClock); clearTimeout(app.advanceTimer);
@@ -232,6 +264,31 @@ autoPickXi(hostTeam);
 eq(hostTeam.xi.playerIds.length,xiTargetSize(hostTeam),'Incomplete squad auto-pick must fill largest legal lineup');
 const [shortValid,shortWhy]=validateXi(hostTeam);
 ok(shortValid,`Incomplete squad legal lineup must validate: ${shortWhy}`);
+
+// Room join validation and snapshot phase synchronization.
+app.game={
+  version:2,roomCode:'JOINV2',hostPeerId:'host',phase:'lobby',
+  settings:{maxTeams:3,squadSize:18,purse:125,timerSeconds:12,overseasLimit:7,hallOfFame:false},
+  teams:[makeTeam('j1','host','Join Host',0)],activity:[],auction:null
+};
+app.route='lobby';app.network.selfId='host';sent.length=0;
+handleJoin('join-peer',{ownerName:'Guest',name:'Join Guest',colors:['#111','#222'],mark:'JG',kind:'custom',templateId:'custom:qa'});
+eq(app.game.teams.length,2,'Valid join must add one franchise');
+ok(sent.some(x=>x.type==='ack'&&x.target==='join-peer'&&x.payload.accepted),'Host must ACK valid join');
+handleJoin('duplicate-peer',{ownerName:'Other',name:'Join Guest',colors:['#111','#222'],mark:'JG',kind:'custom',templateId:'custom:qb'});
+eq(app.game.teams.length,2,'Duplicate franchise name must be rejected');
+
+// Snapshot must move clients across V2 phases.
+app.network.selfId='join-peer';app.game.teams[1].ownerPeerId='join-peer';
+const snap=structuredClone(app.game);snap.phase='trades';snap.postAuction={tradeProposals:[],tradesCompleted:0};
+receiveNetwork({type:'snapshot',payload:snap},'host');
+eq(app.route,'trades','Snapshot must synchronize client route to trade stage');
+
+// Host migration must promote a connected remaining peer.
+app.game.hostPeerId='host';app.game.teams[0].connected=true;app.game.teams[1].connected=true;
+onPeerLeave('host');
+eq(app.game.hostPeerId,'join-peer','Host disconnect must migrate control to a connected peer');
+ok(app.game.teams[0].connected===false,'Disconnected host team must be marked offline');
 
 clearInterval(app.hostClock); clearInterval(app.timerClock); clearTimeout(app.advanceTimer);
 console.log('HammerXI V2 regression PASS');
