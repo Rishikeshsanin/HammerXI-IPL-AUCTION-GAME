@@ -1,24 +1,52 @@
-export function buildAwards(game, getPlayer, fmtPrice) {
-  const sold = game.auction?.sold || [];
-  const awards = [];
-  if (sold.length) {
-    const biggest = [...sold].sort((a,b)=>b.price-a.price)[0];
-    const bp = getPlayer(biggest.playerId);
-    const bt = game.teams.find(t=>t.id===biggest.teamId);
-    awards.push({ icon:'💰', kicker:'BIGGEST BUY', title:bp?.name || '—', sub:`${bt?.name || '—'} · ${fmtPrice(biggest.price)}` });
-    const value = [...sold].sort((a,b)=>{
-      const pa=getPlayer(a.playerId), pb=getPlayer(b.playerId);
-      return (pb?.rating||0)/(b.price+.25) - (pa?.rating||0)/(a.price+.25);
-    })[0];
-    const vp=getPlayer(value.playerId), vt=game.teams.find(t=>t.id===value.teamId);
-    awards.push({ icon:'💎', kicker:'VALUE PICK', title:vp?.name || '—', sub:`${vt?.name || '—'} · ${fmtPrice(value.price)}`, note:'HammerXI rating divided by auction price' });
-  }
-  const maxEntry = obj => { const e=Object.entries(obj||{}); return e.length ? e.sort((a,b)=>b[1]-a[1])[0] : null; };
-  const bid=maxEntry(game.stats?.bidCounts);
-  if(bid){ const t=game.teams.find(x=>x.id===bid[0]); awards.push({ icon:'⚡', kicker:'BID WARRIOR', title:t?.name || '—', sub:`${bid[1]} accepted bids` }); }
-  const bw=maxEntry(game.stats?.warWins);
-  if(bw && bw[1]>0){ const t=game.teams.find(x=>x.id===bw[0]); awards.push({ icon:'🔥', kicker:'BIDDING WAR', title:t?.name || '—', sub:`${bw[1]} bidding-war win${bw[1]===1?'':'s'}` }); }
-  const purse=[...game.teams].sort((a,b)=>b.budget-a.budget)[0];
-  if(purse) awards.push({ icon:'🧠', kicker:'PURSE MASTER', title:purse.name, sub:`${fmtPrice(purse.budget)} left` });
-  return awards;
+const moneyToCr = text => {
+  const s=String(text||'').replace(/[₹,]/g,'').trim();
+  const n=parseFloat(s)||0;
+  return /L/i.test(s) ? n/100 : n;
+};
+
+function metric(card,label){
+  const nodes=[...card.querySelectorAll('.metric')];
+  const m=nodes.find(x=>x.querySelector('span')?.textContent.trim().toLowerCase()===label.toLowerCase());
+  return m?.querySelector('strong')?.textContent.trim() || '';
 }
+
+function buildCeremony(layout){
+  if(layout.querySelector('.ceremony')) return;
+  const teams=[...layout.querySelectorAll('.result-team')];
+  if(!teams.length) return;
+  const info=teams.map(card=>({
+    card,
+    team:card.querySelector('.result-head h3')?.textContent.trim() || 'Franchise',
+    owner:card.querySelector('.result-head p')?.textContent.split('·')[0]?.trim() || '',
+    spent:moneyToCr(metric(card,'Spent')),
+    left:moneyToCr(metric(card,'Left')),
+    players:[...card.querySelectorAll('.player-chip')].map(x=>x.textContent.trim())
+  }));
+  const buys=info.flatMap(t=>t.players.map(text=>{
+    const parts=text.split('·');
+    return {team:t.team,player:(parts[0]||'Player').trim(),price:moneyToCr(parts.slice(1).join('·'))};
+  })).filter(x=>x.price>0);
+  const biggest=buys.sort((a,b)=>b.price-a.price)[0];
+  const smallest=[...buys].sort((a,b)=>a.price-b.price)[0];
+  const spender=[...info].sort((a,b)=>b.spent-a.spent)[0];
+  const saver=[...info].sort((a,b)=>b.left-a.left)[0];
+  const awards=[
+    biggest && {icon:'💰',kicker:'BIGGEST BUY',title:biggest.player,sub:`${biggest.team} · ₹${biggest.price.toFixed(2)} Cr`},
+    spender && {icon:'⚡',kicker:'BIG SPENDER',title:spender.team,sub:`₹${spender.spent.toFixed(2)} Cr spent`},
+    saver && {icon:'🧠',kicker:'PURSE MASTER',title:saver.team,sub:`₹${saver.left.toFixed(2)} Cr left`},
+    smallest && {icon:'💎',kicker:'LOWEST PRICE BUY',title:smallest.player,sub:`${smallest.team} · ₹${smallest.price.toFixed(2)} Cr`}
+  ].filter(Boolean);
+  const el=document.createElement('section');
+  el.className='card ceremony';
+  const confetti=Array.from({length:14},(_,i)=>`<i style="--i:${i}"></i>`).join('');
+  el.innerHTML=`<div class="ceremony-confetti" aria-hidden="true">${confetti}</div><div class="ceremony-copy"><div class="eyebrow">HAMMERXI AUCTION NIGHT</div><h1>AUCTION AWARDS</h1><p>The biggest moments from this auction room.</p></div><div class="ceremony-grid">${awards.map((a,i)=>`<article class="award-card" style="--delay:${i*70}ms"><span class="award-icon">${a.icon}</span><div class="award-kicker">${a.kicker}</div><strong>${a.title}</strong><span>${a.sub}</span></article>`).join('')}</div><div class="ceremony-foot">Calculated locally from the final auction results.</div>`;
+  layout.prepend(el);
+}
+
+function scan(){
+  const layout=document.querySelector('.results-layout');
+  if(layout) buildCeremony(layout);
+}
+
+new MutationObserver(scan).observe(document.documentElement,{subtree:true,childList:true});
+scan();
