@@ -358,10 +358,16 @@ document.addEventListener('click',e=>{
   else if(a==='rules'){app.rules=true;render()}else if(a==='close-rules'){app.rules=false;render()}else if(a==='sound'){app.sound=!app.sound;render();if(app.sound)beep('bid')}
   else if(a==='team-mode'){app.draft.teamMode=b.dataset.mode;render()}else if(a==='pick-franchise'){app.draft.franchiseId=b.dataset.id;render()}else if(a==='pick-logo'){app.draft.logoId=b.dataset.id;render()}
   else if(a==='copy-room'){navigator.clipboard?.writeText(app.game.roomCode);toast('Invite code copied',app.game.roomCode,'ok')}
-  else if(a==='start-auction')command({type:'start'})else if(a==='bid')command({type:'bid'})else if(a==='pass')command({type:'pass'})
-  else if(a==='pause')command({type:'pause'})else if(a==='force-next')command({type:'force-next'})
+  else if(a==='start-auction'){command({type:'start'})}
+  else if(a==='bid'){command({type:'bid'})}
+  else if(a==='pass'){command({type:'pass'})}
+  else if(a==='pause'){command({type:'pause'})}
+  else if(a==='force-next'){command({type:'force-next'})}
   else if(a==='send-chat'){const input=$('#chat-input');const text=input?.value?.trim();if(text){command({type:'chat',text});input.value=''}}
-  else if(a==='reaction')command({type:'reaction',value:b.dataset.value})else if(a==='story'){const t=app.game.teams.find(x=>x.id===b.dataset.team);if(t)drawStory(t)}else if(a==='csv')downloadCsv()else if(a==='leave')leaveRoom();
+  else if(a==='reaction'){command({type:'reaction',value:b.dataset.value})}
+  else if(a==='story'){const t=app.game.teams.find(x=>x.id===b.dataset.team);if(t)drawStory(t)}
+  else if(a==='csv'){downloadCsv()}
+  else if(a==='leave'){leaveRoom()}
 });
 document.addEventListener('keydown',e=>{if(e.key==='Enter'&&e.target?.id==='chat-input'){e.preventDefault();document.querySelector('[data-action="send-chat"]')?.click()}if(e.code==='Space'&&app.route==='auction'&&document.activeElement?.tagName!=='INPUT'){e.preventDefault();document.querySelector('[data-action="bid"]')?.click()}});
 window.addEventListener('beforeunload',()=>{try{app.network?.close?.()}catch{}});
