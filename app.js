@@ -268,6 +268,10 @@ function renderTradeWindow(){
   <aside class="card trade-side"><h3>Trade rules</h3><p>• Player-for-player only<br>• Receiver must accept<br>• Overseas squad limits still apply<br>• Host can end the window at any time</p>${amHost()?`<button class="btn secondary" data-action="close-trades" style="width:100%;margin-top:16px">End trades → Playing XI</button>`:'<div class="waiting"><span class="spinner"></span><span>Host controls when trading ends.</span></div>'}</aside></div>${footer()}`;
 }
 function xiSelectedOverseas(team){return (team.xi?.playerIds||[]).filter(id=>byId(id)?.overseas).length}
+function xiTargetSize(team){
+  const players=team?.players||[],domestic=players.filter(b=>!byId(b.playerId)?.overseas).length,overseas=players.length-domestic;
+  return Math.min(11,domestic+Math.min(4,overseas));
+}
 function autoPickXi(team){
   ensurePostAuction(app.game);
   const sorted=team.players.map(b=>byId(b.playerId)).filter(Boolean).sort((a,b)=>b.rating-a.rating);
@@ -285,8 +289,9 @@ function autoPickXi(team){
   team.xi.locked=false;
 }
 function validateXi(team){
-  const ids=team.xi?.playerIds||[],required=Math.min(11,team.players.length);
-  if(ids.length!==required)return [false,required===11?'Pick exactly 11 players':`Pick all ${required} available players`];
+  const ids=team.xi?.playerIds||[],required=xiTargetSize(team);
+  if(required===0)return [true,''];
+  if(ids.length!==required)return [false,required===11?'Pick exactly 11 players':`Pick the largest legal lineup of ${required}`];
   if(xiSelectedOverseas(team)>4)return [false,'Playing XI can have at most 4 overseas players'];
   if(!team.xi.captainId||!ids.includes(team.xi.captainId))return [false,'Choose a captain from the XI'];
   const squadHasWK=team.players.some(b=>byId(b.playerId)?.role==='WK');
@@ -295,14 +300,14 @@ function validateXi(team){
   return [true,''];
 }
 function renderXiBuilder(){
-  const g=app.game;ensurePostAuction(g);const me=getMyTeam(),xi=me?.xi||{playerIds:[]},ids=xi.playerIds||[],required=Math.min(11,me?.players?.length||0);
+  const g=app.game;ensurePostAuction(g);const me=getMyTeam(),xi=me?.xi||{playerIds:[]},ids=xi.playerIds||[],required=xiTargetSize(me);
   const squad=(me?.players||[]).map(b=>{const p=byId(b.playerId),selected=ids.includes(b.playerId);return `<button class="xi-player ${selected?'selected':''}" data-action="xi-toggle" data-player="${b.playerId}" ${xi.locked?'disabled':''}><span class="xi-check">${selected?'✓':'+'}</span><div><strong>${esc(p?.name||'Player')}</strong><span>${esc(ROLE_LABEL[p?.role]||'Player')} · ${p?.overseas?'Overseas':'India'} · Rating ${p?.rating||'—'}</span></div></button>`}).join('');
   const selectedPlayers=ids.map(id=>byId(id)).filter(Boolean);
   const capOptions=selectedPlayers.map(p=>`<option value="${p.id}" ${xi.captainId===p.id?'selected':''}>${esc(p.name)}</option>`).join('');
   const wkOptions=selectedPlayers.filter(p=>p.role==='WK').map(p=>`<option value="${p.id}" ${xi.wicketkeeperId===p.id?'selected':''}>${esc(p.name)}</option>`).join('');
-  const status=g.teams.map(t=>{const need=Math.min(11,t.players.length);return `<div class="xi-status">${crest(t,'sm')}<span>${esc(t.name)}</span><b class="${t.xi?.locked?'ok':''}">${t.xi?.locked?'LOCKED':`${t.xi?.playerIds?.length||0}/${need}`}</b></div>`}).join('');
+  const status=g.teams.map(t=>{const need=xiTargetSize(t);return `<div class="xi-status">${crest(t,'sm')}<span>${esc(t.name)}</span><b class="${t.xi?.locked?'ok':''}">${t.xi?.locked?'LOCKED':`${t.xi?.playerIds?.length||0}/${need}`}</b></div>`}).join('');
   const [valid,why]=validateXi(me);
-  return `${header()}<div class="xi-shell"><section class="card xi-main"><div class="row-between"><div><div class="eyebrow">PLAYING XI BUILDER</div><h1>${esc(me?.name||'Your XI')}</h1><p class="muted">${required===11?'Pick 11 players.':'This squad has fewer than 11 players, so pick everyone available.'} Maximum 4 overseas players. Choose your captain and wicketkeeper.</p></div><div class="xi-count"><strong>${ids.length}/${required}</strong><span>${xiSelectedOverseas(me)}/4 overseas</span></div></div><div class="xi-grid">${squad}</div></section>
+  return `${header()}<div class="xi-shell"><section class="card xi-main"><div class="row-between"><div><div class="eyebrow">PLAYING XI BUILDER</div><h1>${esc(me?.name||'Your XI')}</h1><p class="muted">${required===11?'Pick 11 players.':'This squad cannot form a full legal XI, so pick its largest legal lineup.'} Maximum 4 overseas players. Choose your captain and wicketkeeper.</p></div><div class="xi-count"><strong>${ids.length}/${required}</strong><span>${xiSelectedOverseas(me)}/4 overseas</span></div></div><div class="xi-grid">${squad}</div></section>
   <aside class="card xi-side"><div class="section-label">XI controls</div><button class="btn secondary" data-action="xi-auto" style="width:100%" ${xi.locked?'disabled':''}>Auto-pick strongest XI</button><div class="field" style="margin-top:14px"><label class="label">Captain</label><select class="select" id="xi-captain" ${xi.locked||!capOptions?'disabled':''}><option value="">Choose captain</option>${capOptions}</select></div><div class="field"><label class="label">Wicketkeeper</label><select class="select" id="xi-keeper" ${xi.locked||!wkOptions?'disabled':''}><option value="">Choose keeper</option>${wkOptions}</select></div><button class="btn primary" data-action="xi-lock" style="width:100%;margin-top:12px" ${xi.locked||!valid?'disabled':''}>${xi.locked?'XI locked':'Lock Playing XI'}</button>${!valid&&!xi.locked?`<div class="reason">${esc(why)}</div>`:''}<div class="section-label" style="margin-top:22px">Room status</div><div class="xi-status-list">${status}</div>${amHost()?`<button class="btn ghost" data-action="xi-autofill-all" style="width:100%;margin-top:12px">Auto-fill unlocked teams</button><button class="btn primary" data-action="reveal-results" style="width:100%;margin-top:8px" ${g.teams.every(t=>t.xi?.locked)?'':'disabled'}>Reveal final results</button>`:'<div class="waiting" style="margin-top:14px"><span class="spinner"></span><span>Waiting for every team to lock an XI.</span></div>'}</aside></div>${footer()}`;
 }
 function newspaperData(g){
