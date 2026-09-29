@@ -201,13 +201,13 @@ function updateBiddingWar(g){
   if(!a.war?.active&&tail.length>=5&&teams.length===2&&alternating){
     a.war={active:true,teamIds:teams,bidCount:recent.length,since:Date.now()};
     const names=teams.map(id=>g.teams.find(t=>t.id===id)?.name).filter(Boolean);
-    addActivity(\`BIDDING WAR — \${names.join(' vs ')}.\`,'war');
+    addActivity(`BIDDING WAR — ${names.join(' vs ')}.`,'war');
   }else if(a.war?.active){a.war.bidCount=recent.length}
 }
 function biddingWarLabel(g){
   const w=g?.auction?.war;if(!w?.active)return '';
   const teams=w.teamIds.map(id=>g.teams.find(t=>t.id===id)).filter(Boolean);
-  return \`<div class="war-banner"><span class="war-flame">🔥</span><div><strong>BIDDING WAR</strong><span>\${teams.map(t=>esc(t.name)).join(' <i>VS</i> ')} · \${w.bidCount} bids</span></div></div>\`;
+  return `<div class="war-banner"><span class="war-flame">🔥</span><div><strong>BIDDING WAR</strong><span>${teams.map(t=>esc(t.name)).join(' <i>VS</i> ')} · ${w.bidCount} bids</span></div></div>`;
 }
 
 function renderScoreTeam(t,me,g){const passed=g.auction.passedTeamIds.includes(t.id);return `<div class="score-team ${t.id===me?.id?'me':''} ${g.auction.highestTeamId===t.id?'leading':''} ${passed?'passed':''}">${crest(t,'sm')}<div class="meta"><strong>${esc(t.name)}</strong><span>${t.players.length}/${g.settings.squadSize} · ${overseasCount(t)}/${g.settings.overseasLimit} OS</span></div><div class="team-auction-state">${passed?'<span class="pass-state">PASS</span>':''}<div class="money">${fmtPrice(t.budget)}</div></div></div>`}
