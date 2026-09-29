@@ -557,7 +557,7 @@ function startAuction(peerId){
 function placeBid(peerId,team){
   const g=app.game,a=g.auction,p=currentPlayer(g);if(a.status!=='live'||a.paused)return sendNotice(peerId,'Bid blocked','The auction clock is paused.');const amount=nextBidAmount(a,p);const [ok,reason]=canTeamBid(team,p,amount,g);if(!ok){beep('error');return sendNotice(peerId,'Bid blocked',reason)}
   a.currentBid=amount;a.highestTeamId=team.id;const now=Date.now();a.bidHistory=(a.bidHistory||[]).filter(x=>now-x.at<=15000);a.bidHistory.push({teamId:team.id,at:now});g.stats=g.stats||{bidCounts:{},warWins:{}};g.stats.bidCounts[team.id]=(g.stats.bidCounts[team.id]||0)+1;updateBiddingWar(g);
-  const reset=Math.max(5000,Math.round(g.settings.timerSeconds*.65)*1000);a.deadline=now+reset;app.lastTensionSecond=null;addActivity(`${team.name} bids ${fmtPrice(amount)} for ${p.name}.`,'bid');beep('bid');broadcast();
+  const reset=Math.max(5000,Math.round(g.settings.timerSeconds*.65)*1000);a.deadline=Math.max(a.deadline,now+reset);app.lastTensionSecond=null;addActivity(`${team.name} bids ${fmtPrice(amount)} for ${p.name}.`,'bid');beep('bid');broadcast();
 }
 function passLot(peerId,team){
   const g=app.game,a=g.auction,p=currentPlayer(g);if(a.status!=='live'||a.paused||a.highestTeamId===team.id)return;
