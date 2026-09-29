@@ -20,7 +20,8 @@ const app = {
     maxTeams:6, squadSize:18, purse:125, timerSeconds:12
   },
   identity:null, network:null, game:null, networkStatus:'offline', pendingJoin:false,
-  hostClock:null, timerClock:null, advanceTimer:null
+  hostClock:null, timerClock:null, advanceTimer:null,
+  photoCache:new Map(), photoInflight:new Map()
 };
 
 function colorsForTeam(t){return t?.colors || ['#667085','#98a2b3']}
@@ -134,7 +135,52 @@ function canTeamBid(team,player,amount,g){
 }
 function currentLot(g=app.game){return g?.auction?.queue?.[g.auction.index]}
 function currentPlayer(g=app.game){const l=currentLot(g);return l?byId(l.playerId):null}
-function renderScoreTeam(t,me,g){return `<div class="score-team ${t.id===me?.id?'me':''} ${g.auction.highestTeamId===t.id?'leading':''}">${crest(t,'sm')}<div class="meta"><strong>${esc(t.name)}</strong><span>${t.players.length}/${g.settings.squadSize} · ${overseasCount(t)}/${g.settings.overseasLimit} OS</span></div><div class="money">${fmtPrice(t.budget)}</div></div>`}
+const PHOTO_ALIASES={
+  'N. Tilak Varma':'Tilak Varma',
+  'Mohd. Arshad Khan':'Arshad Khan cricketer',
+  'M. Siddharth':'Manimaran Siddharth',
+  'R.S Ambrish':'RS Ambrish cricketer'
+};
+function playerPhotoQuery(p){return PHOTO_ALIASES[p.name]||p.name}
+async function fetchPlayerPhoto(p){
+  if(app.photoCache.has(p.id))return app.photoCache.get(p.id);
+  if(app.photoInflight.has(p.id))return app.photoInflight.get(p.id);
+  const task=(async()=>{
+    try{
+      const q=new URLSearchParams({
+        action:'query',generator:'search',gsrsearch:`${playerPhotoQuery(p)} cricketer`,gsrnamespace:'0',gsrlimit:'4',
+        prop:'pageimages|info',piprop:'thumbnail',pithumbsize:'900',pilicense:'free',inprop:'url',format:'json',origin:'*'
+      });
+      const res=await fetch(`https://en.wikipedia.org/w/api.php?${q}`,{credentials:'omit',referrerPolicy:'no-referrer'});
+      if(!res.ok)throw new Error(`Wikipedia photo lookup failed: ${res.status}`);
+      const json=await res.json();
+      const pages=Object.values(json?.query?.pages||{}).filter(x=>x?.thumbnail?.source);
+      const exact=pages.find(x=>x.title?.toLowerCase()===playerPhotoQuery(p).toLowerCase());
+      const cricket=pages.find(x=>/cricket/i.test(x.title||''));
+      const page=exact||cricket||pages[0];
+      const photo=page?{src:String(page.thumbnail.source).replace(/^http:/,'https:'),sourceUrl:page.fullurl||'https://en.wikipedia.org/'}:null;
+      app.photoCache.set(p.id,photo);return photo;
+    }catch{
+      app.photoCache.set(p.id,null);return null;
+    }finally{app.photoInflight.delete(p.id)}
+  })();
+  app.photoInflight.set(p.id,task);return task;
+}
+function photoMarkup(p){
+  const cached=app.photoCache.get(p.id);
+  return `<img id="player-photo" class="player-photo${cached?.src?' ready':''}" data-player-id="${esc(p.id)}" ${cached?.src?`src="${esc(cached.src)}"`:''} alt="${esc(p.name)}" decoding="async" referrerpolicy="no-referrer"><div class="player-photo-shade"></div><a id="player-photo-credit" class="player-photo-credit${cached?.sourceUrl?' ready':''}" ${cached?.sourceUrl?`href="${esc(cached.sourceUrl)}"`:''} target="_blank" rel="noreferrer noopener">PHOTO · WIKIMEDIA</a>`;
+}
+async function hydratePlayerPhoto(){
+  const p=currentPlayer();if(!p)return;
+  const img=$('#player-photo');if(!img||img.dataset.playerId!==p.id)return;
+  const photo=await fetchPlayerPhoto(p);
+  const current=$('#player-photo');if(!photo?.src||!current||current.dataset.playerId!==p.id)return;
+  current.onload=()=>current.classList.add('ready');
+  current.onerror=()=>current.classList.remove('ready');
+  if(current.src!==photo.src)current.src=photo.src;else if(current.complete)current.classList.add('ready');
+  const credit=$('#player-photo-credit');if(credit&&photo.sourceUrl){credit.href=photo.sourceUrl;credit.classList.add('ready')}
+}
+function renderScoreTeam(t,me,g){const passed=g.auction.passedTeamIds.includes(t.id);return `<div class="score-team ${t.id===me?.id?'me':''} ${g.auction.highestTeamId===t.id?'leading':''} ${passed?'passed':''}">${crest(t,'sm')}<div class="meta"><strong>${esc(t.name)}</strong><span>${t.players.length}/${g.settings.squadSize} · ${overseasCount(t)}/${g.settings.overseasLimit} OS</span></div><div class="team-auction-state">${passed?'<span class="pass-state">PASS</span>':''}<div class="money">${fmtPrice(t.budget)}</div></div></div>`}
 function renderAuction(){
   const g=app.game,p=currentPlayer(g),lot=currentLot(g),me=getMyTeam();if(!p||!lot)return renderLobby();
   const a=g.auction,lead=g.teams.find(t=>t.id===a.highestTeamId),next=nextBidAmount(a,p),[can,reason]=canTeamBid(me,p,next,g); const passed=a.passedTeamIds.includes(me?.id);
@@ -144,9 +190,9 @@ function renderAuction(){
   const role=ROLE_LABEL[p.role]; const pct=100;
   return `${header()}<main class="auction-shell"><aside class="auction-col left card auction-side"><div class="row-between"><div class="section-label">Franchise board</div><span class="mini-pill">${g.teams.length}</span></div>${teams}<div style="height:12px"></div><div class="section-label">My squad</div><div class="my-squad">${mine||'<div class="empty" style="padding:14px;font-size:11px">No buys yet.</div>'}</div></aside>
   <section class="auction-col card auction-main"><div class="auction-stage"><div class="stage-top"><div><div class="live-dot">LIVE AUCTION FLOOR</div><div class="lot-tag" style="margin-top:7px">${esc(lot.setLabel)} · LOT ${a.index+1}/${a.queue.length}${a.round===2?' · RECALL':''}</div></div><div class="timer" id="timer" style="--pct:${pct}"><span id="timer-text">${g.settings.timerSeconds}</span></div></div>
-  <div class="player-stage"><div class="player-visual"><span class="origin-tag">${p.originalTeam} · ${p.overseas?'OVERSEAS':'INDIA'}</span><div class="player-initials">${initials(p.name)}</div><div><div class="role">${role}</div><div class="tiny muted" style="margin-top:4px">Game reserve ${fmtPrice(p.basePrice)}</div></div></div>
+  <div class="player-stage"><div class="player-visual">${photoMarkup(p)}<span class="origin-tag">${p.originalTeam} · ${p.overseas?'OVERSEAS':'INDIA'}</span><div class="player-initials">${initials(p.name)}</div><div class="player-visual-meta"><div class="role">${role}</div><div class="tiny muted" style="margin-top:4px">Game reserve ${fmtPrice(p.basePrice)}</div></div></div>
   <div class="player-copy"><div class="player-tags"><span class="tag">${role}</span><span class="tag">${p.overseas?'Overseas':'Indian'}</span><span class="tag">Rating ${p.rating}</span></div><h1>${esc(p.name)}</h1><div class="bid-block"><div class="bid-caption">${lead?'Current bid':'Reserve price'}</div><div class="big-price">${fmtPrice(a.currentBid)}</div><div class="leader-name">${lead?`Highest: <strong>${esc(lead.name)}</strong>`:'Waiting for the opening bid'}</div>
-  <div class="bid-actions"><button class="bid-btn" data-action="bid" ${!can||a.status!=='live'?'disabled':''}>${lead?`BID ${fmtPrice(next)}`:`OPEN AT ${fmtPrice(next)}`}</button><button class="pass-btn" data-action="pass" ${passed||a.status!=='live'?'disabled':''}>${passed?'PASSED':'PASS'}</button></div><div class="reason">${can?`Next increment: ${fmtPrice(incrementFor(a.currentBid))} · Max safe bid ${fmtPrice(maxAllowedBid(me,g.settings))}`:esc(reason)}</div></div></div></div>
+  <div class="bid-actions"><button class="bid-btn" data-action="bid" ${!can||a.status!=='live'?'disabled':''}>${lead?`BID ${fmtPrice(next)}`:`OPEN AT ${fmtPrice(next)}`}</button><button class="pass-btn ${passed?'undo':''}" data-action="pass" ${a.status!=='live'||a.paused||a.highestTeamId===me?.id?'disabled':''}>${passed?'UNDO PASS':'PASS'}</button></div><div class="reason">${passed?'Passed for this player — UNDO PASS stays available until the hammer falls.':can?`Next increment: ${fmtPrice(incrementFor(a.currentBid))} · Max safe bid ${fmtPrice(maxAllowedBid(me,g.settings))}`:esc(reason)}</div></div></div></div>
   ${a.status==='sold'?`<div class="sold-overlay"><div class="hammer-card"><div class="hammer-word">SOLD</div><div class="hammer-sub">${esc(p.name)} → ${esc(g.teams.find(t=>t.id===a.resolution.teamId)?.name||'')}</div><div class="hammer-price">${fmtPrice(a.resolution.price)}</div></div></div>`:''}
   ${a.status==='unsold'?`<div class="sold-overlay"><div class="hammer-card"><div class="hammer-word unsold">UNSOLD</div><div class="hammer-sub">${esc(p.name)} goes to ${a.round===1?'the recall list':'the archives'}</div></div></div>`:''}
   </div><div class="auction-mobile-stats"><div class="metric"><span>Purse</span><strong>${fmtPrice(me?.budget||0)}</strong></div><div class="metric"><span>Squad</span><strong>${me?.players.length||0}/${g.settings.squadSize}</strong></div><div class="metric"><span>Overseas</span><strong>${overseasCount(me||{players:[]})}/${g.settings.overseasLimit}</strong></div></div></section>
@@ -168,7 +214,7 @@ ${[
 ['Reserve prices','Reserve tiers use ₹30L, ₹40L, ₹50L, ₹75L, ₹1 Cr, ₹1.25 Cr, ₹1.5 Cr and ₹2 Cr, mirroring the 2026 auction ladder while player placement in those bands remains a HammerXI game rating.'],
 ['Bid increments','₹5L below ₹1 Cr; ₹10L from ₹1–2 Cr; ₹20L from ₹2–5 Cr; ₹25L above ₹5 Cr.'],
 ['Purse protection','A bid is blocked if it would leave less than ₹30L for each remaining mandatory squad slot.'],
-['Pass & hammer','Passing locks you out for that player. If all eligible rivals pass, the host resolves the lot immediately. Otherwise the live clock decides.'],
+['Pass & hammer','PASS is reversible while the lot is live. Passing never pauses, resets or ends the countdown; use UNDO PASS to re-enter before the hammer falls.'],
 ['Recall round','Unsold players receive one accelerated recall round if at least one franchise still has an open squad slot.'],
 ['Privacy','No login, no profile database, no saved auction history. Live data sits in the connected browsers and disappears when the room ends.']
 ].map((x,i)=>`<div class="rule-item"><div class="rule-num">${i+1}</div><div><strong>${x[0]}</strong><p>${x[1]}</p></div></div>`).join('')}</div><button class="btn primary" data-action="close-rules" style="width:100%;margin-top:20px">Got it</button></div></div>`}
@@ -176,7 +222,7 @@ function render(){
   const root=$('#app');
   const page=app.route==='home'?renderHome():app.route==='create'?renderCreate():app.route==='join'?renderJoin():app.route==='lobby'?renderLobby():app.route==='auction'?renderAuction():app.route==='results'?renderResults():renderHome();
   root.innerHTML=`<div class="shell">${page}</div>${rulesModal()}`;
-  if(app.route==='auction')updateTimerDom();
+  if(app.route==='auction'){updateTimerDom();hydratePlayerPhoto()}
 }
 
 function identityFromDraft(){
@@ -288,15 +334,20 @@ function startAuction(peerId){
 }
 function placeBid(peerId,team){
   const g=app.game,a=g.auction,p=currentPlayer(g);if(a.status!=='live'||a.paused)return sendNotice(peerId,'Bid blocked','The auction clock is paused.');const amount=nextBidAmount(a,p);const [ok,reason]=canTeamBid(team,p,amount,g);if(!ok){beep('error');return sendNotice(peerId,'Bid blocked',reason)}
-  a.currentBid=amount;a.highestTeamId=team.id;const reset=Math.max(5000,Math.round(g.settings.timerSeconds*.65)*1000);a.deadline=Date.now()+reset;addActivity(`${team.name} bids ${fmtPrice(amount)} for ${p.name}.`,'bid');beep('bid');broadcast();checkEarlyHammer();
+  a.currentBid=amount;a.highestTeamId=team.id;const reset=Math.max(5000,Math.round(g.settings.timerSeconds*.65)*1000);a.deadline=Date.now()+reset;addActivity(`${team.name} bids ${fmtPrice(amount)} for ${p.name}.`,'bid');beep('bid');broadcast();
 }
 function passLot(peerId,team){
-  const g=app.game,a=g.auction,p=currentPlayer(g);if(a.status!=='live'||a.paused||a.passedTeamIds.includes(team.id)||a.highestTeamId===team.id)return;a.passedTeamIds.push(team.id);addActivity(`${team.name} passes on ${p.name}.`);broadcast();checkEarlyHammer();
+  const g=app.game,a=g.auction,p=currentPlayer(g);if(a.status!=='live'||a.paused||a.highestTeamId===team.id)return;
+  const i=a.passedTeamIds.indexOf(team.id);
+  if(i>=0){a.passedTeamIds.splice(i,1);addActivity(`${team.name} undoes PASS and re-enters for ${p.name}.`,'bid')}
+  else{a.passedTeamIds.push(team.id);addActivity(`${team.name} passes on ${p.name}.`)}
+  broadcast();
 }
 function potentialTeam(t,p){if(t.connected===false||t.players.length>=app.game.settings.squadSize)return false;if(p.overseas&&overseasCount(t)>=app.game.settings.overseasLimit)return false;const amount=nextBidAmount(app.game.auction,p);return amount<=maxAllowedBid(t,app.game.settings)+.0001}
-function checkEarlyHammer(){
-  const g=app.game,a=g.auction,p=currentPlayer(g);if(!p||a.status!=='live')return;const eligible=g.teams.filter(t=>potentialTeam(t,p));const active=eligible.filter(t=>t.id!==a.highestTeamId&&!a.passedTeamIds.includes(t.id));
-  if(a.highestTeamId&&active.length===0)resolveSold();else if(!a.highestTeamId&&eligible.length>0&&eligible.every(t=>a.passedTeamIds.includes(t.id)))resolveUnsold();else if(!eligible.length)resolveUnsold();
+function checkLotViability(){
+  const g=app.game,a=g.auction,p=currentPlayer(g);if(!p||a.status!=='live')return;
+  const eligible=g.teams.filter(t=>potentialTeam(t,p));
+  if(!eligible.length)resolveUnsold();
 }
 function resolveSold(){
   const g=app.game,a=g.auction;if(a.status!=='live'||!a.highestTeamId)return;const p=currentPlayer(g),t=g.teams.find(x=>x.id===a.highestTeamId);t.budget=round2(t.budget-a.currentBid);t.players.push({playerId:p.id,price:a.currentBid});a.sold.push({playerId:p.id,teamId:t.id,price:a.currentBid});a.status='sold';a.resolution={teamId:t.id,price:a.currentBid};addActivity(`SOLD — ${p.name} to ${t.name} for ${fmtPrice(a.currentBid)}.`,'sold');beep('sold');broadcast();scheduleAdvance();
@@ -313,7 +364,7 @@ function advancePlayer(){
       const recall=shuffle(a.unsold,g.roomCode+'-recall').map(id=>({playerId:id,setLabel:'Accelerated Recall'}));a.queue=recall;a.index=0;a.round=2;a.unsold=[];addActivity(`Accelerated recall begins with ${recall.length} unsold players.`,'sold');
     }else {finishAuction();return}
   }
-  const p=currentPlayer(g);a.currentBid=p.basePrice;a.highestTeamId=null;a.passedTeamIds=[];a.deadline=Date.now()+g.settings.timerSeconds*1000;a.status='live';a.paused=false;a.pauseRemaining=0;a.resolution=null;broadcast();checkEarlyHammer();
+  const p=currentPlayer(g);a.currentBid=p.basePrice;a.highestTeamId=null;a.passedTeamIds=[];a.deadline=Date.now()+g.settings.timerSeconds*1000;a.status='live';a.paused=false;a.pauseRemaining=0;a.resolution=null;broadcast();checkLotViability();
 }
 function finishAuction(){const g=app.game;g.phase='results';addActivity('Auction complete. Squads are locked.','sold');app.route='results';broadcast();clearInterval(app.hostClock)}
 function togglePause(){const g=app.game,a=g.auction;if(a.status!=='live')return;if(!a.paused){a.pauseRemaining=Math.max(0,a.deadline-Date.now());a.paused=true;addActivity('Host paused the auction.')}else{a.deadline=Date.now()+Math.max(2500,a.pauseRemaining);a.paused=false;addActivity('Auction resumed.')}broadcast()}

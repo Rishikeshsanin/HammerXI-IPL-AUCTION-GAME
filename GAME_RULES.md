@@ -19,8 +19,9 @@ HammerXI is a fast friend-group cricket auction inspired by professional IPL auc
 - Bid steps: +₹5L below ₹1 Cr; +₹10L from ₹1–2 Cr; +₹20L from ₹2–5 Cr; +₹25L at/above ₹5 Cr.
 - First bid is the reserve price.
 - Every accepted bid resets the clock to at least five seconds to reduce last-second network-race frustration.
-- Passing locks a franchise out for that player.
-- If all eligible rivals pass, the hammer resolves immediately.
+- Passing temporarily removes a franchise from bidding for that player.
+- PASS is reversible with UNDO PASS while the lot is still live.
+- PASS never pauses, resets, or ends the countdown. Only a new accepted bid resets the bid clock.
 - Host may pause/resume or skip a lot. If a highest bid exists, skipping awards that valid highest bid; otherwise the lot is unsold.
 - Unsold players receive one accelerated recall round when franchises still need players.
 
