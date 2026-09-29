@@ -1,3 +1,4 @@
+const safe = value => String(value ?? '').replace(/[&<>\"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;',"'":'&#39;'}[ch]));
 const moneyToCr = text => {
   const s=String(text||'').replace(/[₹,]/g,'').trim();
   const n=parseFloat(s)||0;
@@ -39,7 +40,7 @@ function buildCeremony(layout){
   const el=document.createElement('section');
   el.className='card ceremony';
   const confetti=Array.from({length:14},(_,i)=>`<i style="--i:${i}"></i>`).join('');
-  el.innerHTML=`<div class="ceremony-confetti" aria-hidden="true">${confetti}</div><div class="ceremony-copy"><div class="eyebrow">HAMMERXI AUCTION NIGHT</div><h1>AUCTION AWARDS</h1><p>The biggest moments from this auction room.</p></div><div class="ceremony-grid">${awards.map((a,i)=>`<article class="award-card" style="--delay:${i*70}ms"><span class="award-icon">${a.icon}</span><div class="award-kicker">${a.kicker}</div><strong>${a.title}</strong><span>${a.sub}</span></article>`).join('')}</div><div class="ceremony-foot">Calculated locally from the final auction results.</div>`;
+  el.innerHTML=`<div class="ceremony-confetti" aria-hidden="true">${confetti}</div><div class="ceremony-copy"><div class="eyebrow">HAMMERXI AUCTION NIGHT</div><h1>AUCTION AWARDS</h1><p>The biggest moments from this auction room.</p></div><div class="ceremony-grid">${awards.map((a,i)=>`<article class="award-card" style="--delay:${i*70}ms"><span class="award-icon">${a.icon}</span><div class="award-kicker">${a.kicker}</div><strong>${safe(a.title)}</strong><span>${safe(a.sub)}</span></article>`).join('')}</div><div class="ceremony-foot">Calculated locally from the final auction results.</div>`;
   layout.prepend(el);
 }
 
