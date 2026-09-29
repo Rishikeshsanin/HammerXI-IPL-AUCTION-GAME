@@ -21,7 +21,8 @@ const app = {
   },
   identity:null, network:null, game:null, networkStatus:'offline', pendingJoin:false,
   hostClock:null, timerClock:null, advanceTimer:null,
-  photoCache:new Map(), photoInflight:new Map()
+  photoCache:new Map(), photoInflight:new Map(),
+  broadcastMode:false, lastTensionSecond:null, lastTensionLot:null
 };
 
 function colorsForTeam(t){return t?.colors || ['#667085','#98a2b3']}
@@ -40,11 +41,13 @@ function beep(kind='bid'){
   if(!app.sound)return;
   try{
     const C=window.AudioContext||window.webkitAudioContext; const ctx=new C(); const o=ctx.createOscillator(),g=ctx.createGain();
-    o.connect(g);g.connect(ctx.destination); const now=ctx.currentTime;
-    o.type=kind==='sold'?'triangle':'sine';o.frequency.setValueAtTime(kind==='sold'?180:kind==='error'?110:420,now);
-    if(kind==='sold')o.frequency.exponentialRampToValueAtTime(75,now+.18);else o.frequency.exponentialRampToValueAtTime(kind==='bid'?630:80,now+.11);
-    g.gain.setValueAtTime(.0001,now);g.gain.exponentialRampToValueAtTime(.08,now+.01);g.gain.exponentialRampToValueAtTime(.0001,now+.22);
-    o.start(now);o.stop(now+.24);setTimeout(()=>ctx.close(),400);
+    o.connect(g);g.connect(ctx.destination); const now=ctx.currentTime; const tick=kind==='tick';
+    o.type=kind==='sold'?'triangle':tick?'square':'sine';
+    const startFreq=kind==='sold'?180:kind==='error'?110:tick?520:420;
+    const endFreq=kind==='sold'?75:kind==='error'?80:tick?360:630;
+    o.frequency.setValueAtTime(startFreq,now);o.frequency.exponentialRampToValueAtTime(endFreq,now+(tick ? .055 : .11));
+    g.gain.setValueAtTime(.0001,now);g.gain.exponentialRampToValueAtTime(tick ? .045 : .08,now+.008);g.gain.exponentialRampToValueAtTime(.0001,now+(tick ? .075 : .22));
+    o.start(now);o.stop(now+(tick ? .09 : .24));setTimeout(()=>ctx.close(),tick?160:400);
   }catch{}
 }
 
@@ -190,6 +193,23 @@ async function hydratePlayerPhoto(){
   if(current.src!==photo.src)current.src=photo.src;else if(current.complete)current.classList.add('ready');
   const credit=$('#player-photo-credit');if(credit&&photo.sourceUrl){credit.href=photo.sourceUrl;credit.classList.add('ready')}
 }
+function updateBiddingWar(g){
+  const a=g.auction;if(!a||a.status!=='live')return;
+  const recent=(a.bidHistory||[]).filter(x=>Date.now()-x.at<=15000);a.bidHistory=recent;
+  const tail=recent.slice(-6),teams=[...new Set(tail.map(x=>x.teamId))];
+  const alternating=tail.length>=5&&tail.slice(-5).every((x,i,arr)=>i===0||x.teamId!==arr[i-1].teamId);
+  if(!a.war?.active&&tail.length>=5&&teams.length===2&&alternating){
+    a.war={active:true,teamIds:teams,bidCount:recent.length,since:Date.now()};
+    const names=teams.map(id=>g.teams.find(t=>t.id===id)?.name).filter(Boolean);
+    addActivity(`BIDDING WAR — ${names.join(' vs ')}.`,'war');
+  }else if(a.war?.active){a.war.bidCount=recent.length}
+}
+function biddingWarLabel(g){
+  const w=g?.auction?.war;if(!w?.active)return '';
+  const teams=w.teamIds.map(id=>g.teams.find(t=>t.id===id)).filter(Boolean);
+  return `<div class="war-banner"><span class="war-flame">🔥</span><div><strong>BIDDING WAR</strong><span>${teams.map(t=>esc(t.name)).join(' <i>VS</i> ')} · ${w.bidCount} bids</span></div></div>`;
+}
+
 function renderScoreTeam(t,me,g){const passed=g.auction.passedTeamIds.includes(t.id);return `<div class="score-team ${t.id===me?.id?'me':''} ${g.auction.highestTeamId===t.id?'leading':''} ${passed?'passed':''}">${crest(t,'sm')}<div class="meta"><strong>${esc(t.name)}</strong><span>${t.players.length}/${g.settings.squadSize} · ${overseasCount(t)}/${g.settings.overseasLimit} OS</span></div><div class="team-auction-state">${passed?'<span class="pass-state">PASS</span>':''}<div class="money">${fmtPrice(t.budget)}</div></div></div>`}
 function renderAuction(){
   const g=app.game,p=currentPlayer(g),lot=currentLot(g),me=getMyTeam();if(!p||!lot)return renderLobby();
@@ -197,16 +217,28 @@ function renderAuction(){
   const teams=g.teams.map(t=>renderScoreTeam(t,me,g)).join('');
   const mine=me?.players.slice().reverse().map(x=>`<div class="squad-mini"><strong>${esc(byId(x.playerId)?.name||'Player')}</strong><span>${fmtPrice(x.price)}</span></div>`).join('')||'';
   const feed=g.activity.slice(-26).reverse().map(e=>`<div class="feed-item ${e.kind||''}">${esc(e.text)}</div>`).join('');
-  const role=ROLE_LABEL[p.role]; const pct=100;
-  return `${header()}<main class="auction-shell"><aside class="auction-col left card auction-side"><div class="row-between"><div class="section-label">Franchise board</div><span class="mini-pill">${g.teams.length}</span></div>${teams}<div style="height:12px"></div><div class="section-label">My squad</div><div class="my-squad">${mine||'<div class="empty" style="padding:14px;font-size:11px">No buys yet.</div>'}</div></aside>
+  const role=ROLE_LABEL[p.role]; const pct=100; const war=biddingWarLabel(g);
+  return `${header()}${war}<main class="auction-shell"><aside class="auction-col left card auction-side"><div class="row-between"><div class="section-label">Franchise board</div><span class="mini-pill">${g.teams.length}</span></div>${teams}<div style="height:12px"></div><div class="section-label">My squad</div><div class="my-squad">${mine||'<div class="empty" style="padding:14px;font-size:11px">No buys yet.</div>'}</div></aside>
   <section class="auction-col card auction-main"><div class="auction-stage"><div class="stage-top"><div><div class="live-dot">LIVE AUCTION FLOOR</div><div class="lot-tag" style="margin-top:7px">${esc(lot.setLabel)} · LOT ${a.index+1}/${a.queue.length}${a.round===2?' · RECALL':''}</div></div><div class="timer" id="timer" style="--pct:${pct}"><span id="timer-text">${g.settings.timerSeconds}</span></div></div>
   <div class="player-stage"><div class="player-visual">${photoMarkup(p)}<span class="origin-tag">${p.originalTeam} · ${p.overseas?'OVERSEAS':'INDIA'}</span><div class="player-initials">${initials(p.name)}</div><div class="player-visual-meta"><div class="role">${role}</div><div class="tiny muted" style="margin-top:4px">Game reserve ${fmtPrice(p.basePrice)}</div></div></div>
   <div class="player-copy"><div class="player-tags"><span class="tag">${role}</span><span class="tag">${p.overseas?'Overseas':'Indian'}</span><span class="tag">Rating ${p.rating}</span></div><h1>${esc(p.name)}</h1><div class="bid-block"><div class="bid-caption">${lead?'Current bid':'Reserve price'}</div><div class="big-price">${fmtPrice(a.currentBid)}</div><div class="leader-name">${lead?`Highest: <strong>${esc(lead.name)}</strong>`:'Waiting for the opening bid'}</div>
   <div class="bid-actions"><button class="bid-btn" data-action="bid" ${!can||a.status!=='live'?'disabled':''}>${lead?`BID ${fmtPrice(next)}`:`OPEN AT ${fmtPrice(next)}`}</button><button class="pass-btn ${passed?'undo':''}" data-action="pass" ${a.status!=='live'||a.paused||a.highestTeamId===me?.id?'disabled':''}>${passed?'UNDO PASS':'PASS'}</button></div><div class="reason">${passed?'Passed for this player — UNDO PASS stays available until the hammer falls.':can?`Next increment: ${fmtPrice(incrementFor(a.currentBid))} · Max safe bid ${fmtPrice(maxAllowedBid(me,g.settings))}`:esc(reason)}</div></div></div></div>
-  ${a.status==='sold'?`<div class="sold-overlay"><div class="hammer-card"><div class="hammer-word">SOLD</div><div class="hammer-sub">${esc(p.name)} → ${esc(g.teams.find(t=>t.id===a.resolution.teamId)?.name||'')}</div><div class="hammer-price">${fmtPrice(a.resolution.price)}</div></div></div>`:''}
+  ${a.status==='sold'?`<div class="sold-overlay"><div class="sold-rays"></div><div class="gavel-swing">🔨</div><div class="hammer-card">${a.resolution?.war?'<div class="sold-war">🔥 BIDDING WAR WON</div>':''}<div class="hammer-word">SOLD</div><div class="sold-player">${esc(p.name)}</div><div class="sold-to">${crest(g.teams.find(t=>t.id===a.resolution.teamId),'sm')}<span>TO <strong>${esc(g.teams.find(t=>t.id===a.resolution.teamId)?.name||'')}</strong></span></div><div class="hammer-price">${fmtPrice(a.resolution.price)}</div></div></div>`:''}
   ${a.status==='unsold'?`<div class="sold-overlay"><div class="hammer-card"><div class="hammer-word unsold">UNSOLD</div><div class="hammer-sub">${esc(p.name)} goes to ${a.round===1?'the recall list':'the archives'}</div></div></div>`:''}
   </div><div class="auction-mobile-stats"><div class="metric"><span>Purse</span><strong>${fmtPrice(me?.budget||0)}</strong></div><div class="metric"><span>Squad</span><strong>${me?.players.length||0}/${g.settings.squadSize}</strong></div><div class="metric"><span>Overseas</span><strong>${overseasCount(me||{players:[]})}/${g.settings.overseasLimit}</strong></div></div></section>
-  <aside class="auction-col right card auction-side"><div class="section-label">Room activity</div><div class="feed" id="feed">${feed||'<div class="feed-item">Auction activity will appear here.</div>'}</div><div class="chat-box"><input class="input" id="chat-input" maxlength="70" placeholder="Auction chat… keep it clean"><button class="icon-btn" data-action="send-chat">↗</button></div><div class="reactions"><button class="reaction" data-action="reaction" data-value="🔥">🔥</button><button class="reaction" data-action="reaction" data-value="😂">😂</button><button class="reaction" data-action="reaction" data-value="💀">💀</button><button class="reaction" data-action="reaction" data-value="👏">👏</button></div><div style="height:18px"></div><div class="section-label">Auction control</div>${amHost()?`<div style="display:grid;grid-template-columns:1fr 1fr;gap:7px"><button class="btn small secondary" data-action="pause">${a.paused?'Resume':'Pause'}</button><button class="btn small ghost" data-action="force-next">Skip lot</button></div>`:`<div class="small-copy muted">Host controls the hammer and auction flow.</div>`}<div class="summary-block"><span>Pool</span><strong>${a.queue.length} lots</strong></div><div class="summary-block"><span>Sold</span><strong>${a.sold.length}</strong></div><div class="summary-block"><span>Recall</span><strong>${a.round===2?'Active':`${a.unsold.length} waiting`}</strong></div></aside></main>`;
+  <aside class="auction-col right card auction-side"><div class="section-label">Room activity</div><div class="feed" id="feed">${feed||'<div class="feed-item">Auction activity will appear here.</div>'}</div><div class="chat-box"><input class="input" id="chat-input" maxlength="70" placeholder="Auction chat… keep it clean"><button class="icon-btn" data-action="send-chat">↗</button></div><div class="reactions"><button class="reaction" data-action="reaction" data-value="🔥">🔥</button><button class="reaction" data-action="reaction" data-value="😂">😂</button><button class="reaction" data-action="reaction" data-value="💀">💀</button><button class="reaction" data-action="reaction" data-value="👏">👏</button></div><div style="height:18px"></div><div class="section-label">Auction control</div>${amHost()?`<div style="display:grid;grid-template-columns:1fr 1fr;gap:7px"><button class="btn small secondary" data-action="pause">${a.paused?'Resume':'Pause'}</button><button class="btn small ghost" data-action="force-next">Skip lot</button></div>`:`<div class="small-copy muted">Host controls the hammer and auction flow.</div>`}<button class="btn small broadcast-toggle" data-action="toggle-broadcast" style="width:100%;margin-top:7px">🏟️ Broadcast screen</button><div class="summary-block"><span>Pool</span><strong>${a.queue.length} lots</strong></div><div class="summary-block"><span>Sold</span><strong>${a.sold.length}</strong></div><div class="summary-block"><span>Recall</span><strong>${a.round===2?'Active':`${a.unsold.length} waiting`}</strong></div></aside></main>`;
+}
+
+function renderBroadcastAuction(){
+  const g=app.game,p=currentPlayer(g),lot=currentLot(g);if(!p||!lot)return renderLobby();
+  const a=g.auction,lead=g.teams.find(t=>t.id===a.highestTeamId),role=ROLE_LABEL[p.role],war=biddingWarLabel(g);
+  const board=g.teams.map((t,i)=>`<div class="broadcast-team ${a.highestTeamId===t.id?'leading':''} ${a.passedTeamIds.includes(t.id)?'passed':''}"><span class="broadcast-rank">${String(i+1).padStart(2,'0')}</span>${crest(t,'sm')}<div><strong>${esc(t.name)}</strong><span>${t.players.length}/${g.settings.squadSize} players · ${overseasCount(t)}/${g.settings.overseasLimit} OS</span></div><b>${fmtPrice(t.budget)}</b></div>`).join('');
+  return `<div class="broadcast-shell">${war}<div class="broadcast-top"><div class="brand broadcast-brand"><span class="brand-mark"><span>H</span></span>HAMMER<span style="color:var(--accent)">XI</span></div><div class="broadcast-live"><span class="live-dot">LIVE AUCTION</span><span>${esc(lot.setLabel)} · LOT ${a.index+1}/${a.queue.length}</span></div><button class="btn small secondary" data-action="toggle-broadcast">Exit broadcast</button></div>
+  <main class="broadcast-main"><section class="broadcast-player"><div class="broadcast-photo">${photoMarkup(p)}<div class="player-initials">${initials(p.name)}</div><span class="origin-tag">${p.originalTeam} · ${p.overseas?'OVERSEAS':'INDIA'}</span></div><div class="broadcast-player-copy"><div class="player-tags"><span class="tag">${role}</span><span class="tag">${p.overseas?'Overseas':'Indian'}</span><span class="tag">Rating ${p.rating}</span></div><h1>${esc(p.name)}</h1><div class="broadcast-bid-label">${lead?'CURRENT BID':'RESERVE PRICE'}</div><div class="broadcast-price">${fmtPrice(a.currentBid)}</div><div class="broadcast-leader">${lead?`LEADING · <strong>${esc(lead.name)}</strong>`:'WAITING FOR THE OPENING BID'}</div></div><div class="broadcast-clock timer" id="timer"><span id="timer-text">${g.settings.timerSeconds}</span></div></section>
+  <aside class="broadcast-board"><div class="section-label">FRANCHISE BOARD</div>${board}</aside>
+  ${a.status==='sold'?`<div class="sold-overlay broadcast-sold"><div class="sold-rays"></div><div class="gavel-swing">🔨</div><div class="hammer-card">${a.resolution?.war?'<div class="sold-war">🔥 BIDDING WAR WON</div>':''}<div class="hammer-word">SOLD</div><div class="sold-player">${esc(p.name)}</div><div class="sold-to">${crest(g.teams.find(t=>t.id===a.resolution.teamId),'sm')}<span>TO <strong>${esc(g.teams.find(t=>t.id===a.resolution.teamId)?.name||'')}</strong></span></div><div class="hammer-price">${fmtPrice(a.resolution.price)}</div></div></div>`:''}
+  ${a.status==='unsold'?`<div class="sold-overlay broadcast-sold"><div class="hammer-card"><div class="hammer-word unsold">UNSOLD</div><div class="sold-player">${esc(p.name)}</div></div></div>`:''}
+  </main></div>`;
 }
 
 function bestBuy(team){if(!team.players.length)return null;return [...team.players].sort((a,b)=>{const pa=byId(a.playerId),pb=byId(b.playerId);return (pb.rating/(b.price+.25))-(pa.rating/(a.price+.25))})[0]}
@@ -230,7 +262,7 @@ ${[
 ].map((x,i)=>`<div class="rule-item"><div class="rule-num">${i+1}</div><div><strong>${x[0]}</strong><p>${x[1]}</p></div></div>`).join('')}</div><button class="btn primary" data-action="close-rules" style="width:100%;margin-top:20px">Got it</button></div></div>`}
 function render(){
   const root=$('#app');
-  const page=app.route==='home'?renderHome():app.route==='create'?renderCreate():app.route==='join'?renderJoin():app.route==='lobby'?renderLobby():app.route==='auction'?renderAuction():app.route==='results'?renderResults():renderHome();
+  const page=app.route==='home'?renderHome():app.route==='create'?renderCreate():app.route==='join'?renderJoin():app.route==='lobby'?renderLobby():app.route==='auction'?(app.broadcastMode?renderBroadcastAuction():renderAuction()):app.route==='results'?renderResults():renderHome();
   root.innerHTML=`<div class="shell">${page}</div>${rulesModal()}`;
   if(app.route==='auction'){updateTimerDom();hydratePlayerPhoto()}
 }
@@ -340,11 +372,12 @@ function buildQueue(pool,seed){
 }
 function startAuction(peerId){
   const g=app.game;if(peerId!==g.hostPeerId||g.phase!=='lobby'||g.teams.length<2)return;g.settings.overseasLimit=g.settings.squadSize>=18?7:6;g.teams.forEach(t=>{t.budget=g.settings.purse;t.players=[];t.connected=t.connected!==false});const pool=buildPool(g.teams.length,g.roomCode);const queue=buildQueue(pool,g.roomCode);
-  g.phase='auction';g.auction={queue,index:0,round:1,currentBid:byId(queue[0].playerId).basePrice,highestTeamId:null,passedTeamIds:[],deadline:Date.now()+g.settings.timerSeconds*1000,status:'live',paused:false,pauseRemaining:0,sold:[],unsold:[],resolution:null};addActivity(`Auction started with ${pool.length} players for ${g.teams.length} franchises.`,'sold');app.route='auction';broadcast();startHostClock();startTimerClock();
+  g.stats={bidCounts:{},warWins:{}};g.phase='auction';g.auction={queue,index:0,round:1,currentBid:byId(queue[0].playerId).basePrice,highestTeamId:null,passedTeamIds:[],deadline:Date.now()+g.settings.timerSeconds*1000,status:'live',paused:false,pauseRemaining:0,sold:[],unsold:[],resolution:null,bidHistory:[],war:null};addActivity(`Auction started with ${pool.length} players for ${g.teams.length} franchises.`,'sold');app.route='auction';app.broadcastMode=false;broadcast();startHostClock();startTimerClock();
 }
 function placeBid(peerId,team){
   const g=app.game,a=g.auction,p=currentPlayer(g);if(a.status!=='live'||a.paused)return sendNotice(peerId,'Bid blocked','The auction clock is paused.');const amount=nextBidAmount(a,p);const [ok,reason]=canTeamBid(team,p,amount,g);if(!ok){beep('error');return sendNotice(peerId,'Bid blocked',reason)}
-  a.currentBid=amount;a.highestTeamId=team.id;const reset=Math.max(5000,Math.round(g.settings.timerSeconds*.65)*1000);a.deadline=Date.now()+reset;addActivity(`${team.name} bids ${fmtPrice(amount)} for ${p.name}.`,'bid');beep('bid');broadcast();
+  a.currentBid=amount;a.highestTeamId=team.id;const now=Date.now();a.bidHistory=(a.bidHistory||[]).filter(x=>now-x.at<=15000);a.bidHistory.push({teamId:team.id,at:now});g.stats=g.stats||{bidCounts:{},warWins:{}};g.stats.bidCounts[team.id]=(g.stats.bidCounts[team.id]||0)+1;updateBiddingWar(g);
+  const reset=Math.max(5000,Math.round(g.settings.timerSeconds*.65)*1000);a.deadline=now+reset;app.lastTensionSecond=null;addActivity(`${team.name} bids ${fmtPrice(amount)} for ${p.name}.`,'bid');beep('bid');broadcast();
 }
 function passLot(peerId,team){
   const g=app.game,a=g.auction,p=currentPlayer(g);if(a.status!=='live'||a.paused||a.highestTeamId===team.id)return;
@@ -360,12 +393,15 @@ function checkLotViability(){
   if(!eligible.length)resolveUnsold();
 }
 function resolveSold(){
-  const g=app.game,a=g.auction;if(a.status!=='live'||!a.highestTeamId)return;const p=currentPlayer(g),t=g.teams.find(x=>x.id===a.highestTeamId);t.budget=round2(t.budget-a.currentBid);t.players.push({playerId:p.id,price:a.currentBid});a.sold.push({playerId:p.id,teamId:t.id,price:a.currentBid});a.status='sold';a.resolution={teamId:t.id,price:a.currentBid};addActivity(`SOLD — ${p.name} to ${t.name} for ${fmtPrice(a.currentBid)}.`,'sold');beep('sold');broadcast();scheduleAdvance();
+  const g=app.game,a=g.auction;if(a.status!=='live'||!a.highestTeamId)return;const p=currentPlayer(g),t=g.teams.find(x=>x.id===a.highestTeamId),war=!!a.war?.active;
+  t.budget=round2(t.budget-a.currentBid);t.players.push({playerId:p.id,price:a.currentBid});a.sold.push({playerId:p.id,teamId:t.id,price:a.currentBid,war,bidCount:(a.bidHistory||[]).length});a.status='sold';a.resolution={teamId:t.id,price:a.currentBid,war};
+  if(war){g.stats=g.stats||{bidCounts:{},warWins:{}};g.stats.warWins[t.id]=(g.stats.warWins[t.id]||0)+1}
+  addActivity(`SOLD — ${p.name} to ${t.name} for ${fmtPrice(a.currentBid)}.`,'sold');beep('sold');broadcast();scheduleAdvance();
 }
 function resolveUnsold(forced=false){
   const g=app.game,a=g.auction;if(a.status!=='live')return;const p=currentPlayer(g);if(a.round===1&&!a.unsold.includes(p.id))a.unsold.push(p.id);a.status='unsold';a.resolution={forced};addActivity(`${p.name} is unsold${forced?' (host skip)':''}.`);broadcast();scheduleAdvance();
 }
-function scheduleAdvance(){clearTimeout(app.advanceTimer);if(!amHost())return;app.advanceTimer=setTimeout(()=>{app.advanceTimer=null;advancePlayer()},1700)}
+function scheduleAdvance(){clearTimeout(app.advanceTimer);if(!amHost())return;app.advanceTimer=setTimeout(()=>{app.advanceTimer=null;advancePlayer()},2800)}
 function advancePlayer(){
   const g=app.game,a=g.auction;if(!amHost()||g.phase!=='auction')return;if(g.teams.every(t=>t.connected===false||t.players.length>=g.settings.squadSize)){finishAuction();return}
   a.index++;
@@ -374,14 +410,18 @@ function advancePlayer(){
       const recall=shuffle(a.unsold,g.roomCode+'-recall').map(id=>({playerId:id,setLabel:'Accelerated Recall'}));a.queue=recall;a.index=0;a.round=2;a.unsold=[];addActivity(`Accelerated recall begins with ${recall.length} unsold players.`,'sold');
     }else {finishAuction();return}
   }
-  const p=currentPlayer(g);a.currentBid=p.basePrice;a.highestTeamId=null;a.passedTeamIds=[];a.deadline=Date.now()+g.settings.timerSeconds*1000;a.status='live';a.paused=false;a.pauseRemaining=0;a.resolution=null;broadcast();checkLotViability();
+  const p=currentPlayer(g);a.currentBid=p.basePrice;a.highestTeamId=null;a.passedTeamIds=[];a.deadline=Date.now()+g.settings.timerSeconds*1000;a.status='live';a.paused=false;a.pauseRemaining=0;a.resolution=null;a.bidHistory=[];a.war=null;app.lastTensionSecond=null;app.lastTensionLot=null;broadcast();checkLotViability();
 }
 function finishAuction(){const g=app.game;g.phase='results';addActivity('Auction complete. Squads are locked.','sold');app.route='results';broadcast();clearInterval(app.hostClock)}
 function togglePause(){const g=app.game,a=g.auction;if(a.status!=='live')return;if(!a.paused){a.pauseRemaining=Math.max(0,a.deadline-Date.now());a.paused=true;addActivity('Host paused the auction.')}else{a.deadline=Date.now()+Math.max(2500,a.pauseRemaining);a.paused=false;addActivity('Auction resumed.')}broadcast()}
 function startHostClock(){clearInterval(app.hostClock);if(!amHost()||app.game?.phase!=='auction')return;app.hostClock=setInterval(()=>{const a=app.game?.auction;if(!a)return;if((a.status==='sold'||a.status==='unsold')&&!app.advanceTimer)scheduleAdvance();if(a.status==='live'&&!a.paused&&Date.now()>=a.deadline){a.highestTeamId?resolveSold():resolveUnsold()}},180)}
 function startTimerClock(){if(app.timerClock)return;app.timerClock=setInterval(updateTimerDom,120)}
 function updateTimerDom(){
-  const el=$('#timer'),txt=$('#timer-text'),g=app.game;if(!el||!txt||g?.phase!=='auction')return;const a=g.auction;if(a.paused){txt.textContent='Ⅱ';el.style.setProperty('--pct','100');return}const total=g.settings.timerSeconds*1000;const left=Math.max(0,a.deadline-Date.now());const sec=Math.ceil(left/1000);const pct=clamp((left/total)*100,0,100);txt.textContent=String(sec);el.style.setProperty('--pct',String(pct));el.classList.toggle('danger',sec<=3&&a.status==='live')
+  const el=$('#timer'),txt=$('#timer-text'),g=app.game;if(!el||!txt||g?.phase!=='auction')return;const a=g.auction;if(a.paused){txt.textContent='Ⅱ';el.style.setProperty('--pct','100');return}
+  const total=g.settings.timerSeconds*1000,left=Math.max(0,a.deadline-Date.now()),sec=Math.ceil(left/1000),pct=clamp((left/total)*100,0,100),lotKey=`${a.round}:${a.index}`;
+  txt.textContent=String(sec);el.style.setProperty('--pct',String(pct));const tension=sec<=3&&sec>0&&a.status==='live';el.classList.toggle('danger',tension);document.querySelector('.auction-stage, .broadcast-main')?.classList.toggle('tension',tension);
+  if(app.lastTensionLot!==lotKey){app.lastTensionLot=lotKey;app.lastTensionSecond=null}
+  if(tension&&app.lastTensionSecond!==sec){app.lastTensionSecond=sec;beep('tick');document.querySelector('.auction-stage, .broadcast-main')?.setAttribute('data-countdown',String(sec))}
 }
 
 function drawStory(team){
@@ -424,6 +464,7 @@ document.addEventListener('click',e=>{
   else if(a==='bid'){command({type:'bid'})}
   else if(a==='pass'){command({type:'pass'})}
   else if(a==='pause'){command({type:'pause'})}
+  else if(a==='toggle-broadcast'){app.broadcastMode=!app.broadcastMode;render()}
   else if(a==='force-next'){command({type:'force-next'})}
   else if(a==='send-chat'){const input=$('#chat-input');const text=input?.value?.trim();if(text){command({type:'chat',text});input.value=''}}
   else if(a==='reaction'){command({type:'reaction',value:b.dataset.value})}
@@ -431,7 +472,7 @@ document.addEventListener('click',e=>{
   else if(a==='csv'){downloadCsv()}
   else if(a==='leave'){leaveRoom()}
 });
-document.addEventListener('keydown',e=>{if(e.key==='Enter'&&e.target?.id==='chat-input'){e.preventDefault();document.querySelector('[data-action="send-chat"]')?.click()}if(e.code==='Space'&&app.route==='auction'&&document.activeElement?.tagName!=='INPUT'){e.preventDefault();document.querySelector('[data-action="bid"]')?.click()}});
+document.addEventListener('keydown',e=>{if(e.key==='Enter'&&e.target?.id==='chat-input'){e.preventDefault();document.querySelector('[data-action="send-chat"]')?.click()}if(e.code==='Space'&&app.route==='auction'&&!app.broadcastMode&&document.activeElement?.tagName!=='INPUT'){e.preventDefault();document.querySelector('[data-action="bid"]')?.click()}if((e.key==='b'||e.key==='B')&&app.route==='auction'&&document.activeElement?.tagName!=='INPUT'){app.broadcastMode=!app.broadcastMode;render()}});
 window.addEventListener('beforeunload',()=>{try{app.network?.close?.()}catch{}});
 
 render();

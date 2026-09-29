@@ -16,7 +16,7 @@ await build({
   legalComments: 'none'
 });
 
-for (const file of ['index.html', 'styles.css', 'favicon.svg']) {
+for (const file of ['index.html', 'styles.css', 'favicon.svg', 'ceremony.js']) {
   await cp(file, `dist/${file}`);
 }
 
