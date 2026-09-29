@@ -14,11 +14,21 @@ globalThis.document = {
     return null;
   },
   addEventListener() {},
-  createElement() {
+  createElement(tag='div') {
+    const gradient={ addColorStop(){} };
+    const ctx={
+      fillStyle:'',font:'',textAlign:'left',
+      fillRect(){},fillText(){},save(){},restore(){},translate(){},
+      beginPath(){},moveTo(){},lineTo(){},closePath(){},fill(){},rect(){},roundRect(){},
+      createLinearGradient(){return gradient},createRadialGradient(){return gradient},
+      measureText(text){return {width:String(text).length*12}}
+    };
     return {
-      style: {}, dataset: {}, classList: { add(){}, remove(){}, toggle(){} },
+      tagName:String(tag).toUpperCase(), style: {}, dataset: {}, className:'', innerHTML:'',
+      classList: { add(){}, remove(){}, toggle(){} },
       appendChild(){}, remove(){}, click(){}, setAttribute(){},
-      getContext(){ return null; }
+      getContext(){ return ctx; },
+      toBlob(cb){ cb(new Blob(['hammerxi-qa'],{type:'image/png'})); }
     };
   }
 };
@@ -40,7 +50,7 @@ const factory = new Function(
     updateBiddingWar, resolveSold, resolveUnsold, advancePlayer, finishAuction,
     ensurePostAuction, openTradeWindow, startXiBuilder, proposeTrade, respondTrade,
     autoPickXi, validateXi, xiTargetSize, lockXi, autoFillAllXi, revealResults,
-    renderPostAuction, renderTradeWindow, renderXiBuilder, renderResults, renderBroadcastAuction,
+    renderPostAuction, renderTradeWindow, renderXiBuilder, renderResults, renderBroadcastAuction, drawNewspaper,
     applySetting, handleCommand, handleJoin, receiveNetwork, onPeerLeave
   };`
 );
@@ -55,7 +65,7 @@ const {
   updateBiddingWar, resolveSold, resolveUnsold, advancePlayer, finishAuction,
   ensurePostAuction, openTradeWindow, startXiBuilder, proposeTrade, respondTrade,
   autoPickXi, validateXi, xiTargetSize, lockXi, autoFillAllXi, revealResults,
-  renderPostAuction, renderTradeWindow, renderXiBuilder, renderResults, renderBroadcastAuction,
+  renderPostAuction, renderTradeWindow, renderXiBuilder, renderResults, renderBroadcastAuction, drawNewspaper,
   applySetting, handleCommand, handleJoin, receiveNetwork, onPeerLeave
 } = engine;
 
@@ -248,6 +258,7 @@ const results=renderResults();
 ok(results.includes('THE AUCTION DAILY'),'Results must include automatic newspaper');
 ok(results.includes('PLAYING XI'),'Results must include Playing XI');
 ok(results.includes('data-hof="0"'),'Hall of Fame disabled state must propagate to results');
+drawNewspaper();
 
 // Short/imbalanced squad must never deadlock XI stage.
 app.game.phase='xi'; app.route='xi';
