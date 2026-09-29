@@ -27,6 +27,8 @@ jobs:
         run: node --check data.js
       - name: Verify auction catalogue and pool rules
         run: node scripts/verify.mjs
+      - name: Verify HammerXI V2 flow
+        run: node scripts/verify-v2.mjs
       - name: Smoke-test browser startup
         run: node scripts/smoke.mjs
       - name: Build production bundle

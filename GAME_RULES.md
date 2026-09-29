@@ -27,3 +27,24 @@ HammerXI is a fast friend-group cricket auction inspired by professional IPL auc
 
 ## Authenticity note
 The reserve ladder and ₹125 Cr default are inspired by the 2026 IPL auction framework. Player ratings, scaled pools, shorter squad sizes, overseas caps and bid increments are HammerXI gameplay choices built for a fair, fast friends game.
+
+
+## HammerXI V2 post-auction rules
+
+### Auction sequence
+The main player pool is presented in a fixed cricket-role sequence:
+**Marquee → Wicketkeepers → Batters → All-Rounders → Spin Bowlers → Pace Bowlers**.
+Large categories are split into numbered sets so one role is completed before the next begins.
+
+### Pause / Continue
+Only the host can pause the live auction. Pausing freezes the remaining countdown. Continuing resumes from the frozen remaining time; it does not restart a fresh full clock.
+
+### Optional Trade Window
+After the auction, the host chooses either **Open Trade Window** or **Skip Trades**.
+V2 trades are one-player-for-one-player swaps. The receiving franchise must explicitly accept. A trade is blocked if the resulting squad would exceed the auction overseas-squad limit. The host may end the trade window at any time.
+
+### Playing XI
+Each franchise selects exactly 11 players. A Playing XI may contain at most 4 overseas players. A captain must be selected from the XI. If the squad contains specialist wicketkeepers, the XI must contain a wicketkeeper and designate one as keeper.
+
+### Newspaper and Hall of Fame
+The Auction Newspaper is generated locally from the room's final auction data. Hall of Fame is an optional host setting; its awards are entertainment based on the current room's auction results, not objective cricket-performance rankings.

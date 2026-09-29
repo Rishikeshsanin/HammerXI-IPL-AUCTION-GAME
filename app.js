@@ -54,7 +54,7 @@ function beep(kind='bid'){
 function header(){
   const status= app.networkStatus==='online' ? ['Live P2P',''] : app.networkStatus==='local' ? ['Local fallback','warn'] : ['No room','off'];
   return `<header class="topbar">
-    <button class="brand" data-action="home" style="background:none;border:0;color:inherit;padding:0"><span class="brand-mark"><span>H</span></span>HAMMER<span style="color:var(--accent)">XI</span></button>
+    <button class="brand" data-action="home" style="background:none;border:0;color:inherit;padding:0"><span class="brand-mark"><span>H</span></span>HAMMER<span style="color:var(--accent)">XI</span><small class="version-mark">V2</small></button>
     <div class="top-actions">
       <span class="privacy-pill"><span class="dot"></span>No accounts · no permanent storage</span>
       <span class="status-pill"><span class="dot ${status[1]}"></span>${status[0]}</span>
@@ -117,7 +117,8 @@ function renderLobby(){
   <div class="setting-row"><label>Room capacity</label><select class="select" data-setting="maxTeams" ${amHost()?'':'disabled'}>${opts([2,3,4,5,6,7,8,9,10],'maxTeams',' teams')}</select></div>
   <div class="setting-row"><label>Squad size</label><select class="select" data-setting="squadSize" ${amHost()?'':'disabled'}>${opts([15,16,17,18,19,20],'squadSize','')}</select></div>
   <div class="setting-row"><label>Starting purse</label><select class="select" data-setting="purse" ${amHost()?'':'disabled'}>${opts([100,125,150],'purse',' Cr')}</select></div>
-  <div class="setting-row"><label>Bid clock</label><select class="select" data-setting="timerSeconds" ${amHost()?'':'disabled'}>${opts([8,10,12,15,20],'timerSeconds','s')}</select></div></div>
+  <div class="setting-row"><label>Bid clock</label><select class="select" data-setting="timerSeconds" ${amHost()?'':'disabled'}>${opts([8,10,12,15,20],'timerSeconds','s')}</select></div>
+  <div class="setting-row"><label>Hall of Fame</label><select class="select" data-setting="hallOfFame" ${amHost()?'':'disabled'}><option value="0" ${!g.settings.hallOfFame?'selected':''}>Off</option><option value="1" ${g.settings.hallOfFame?'selected':''}>On</option></select></div></div>
   <div class="summary-block"><span>Overseas cap</span><strong>${g.settings.squadSize>=18?7:6}</strong></div><div class="summary-block"><span>Player pool now</span><strong>${pool}</strong></div><div class="connection-banner"><span class="dot ${app.networkStatus==='local'?'warn':''}"></span><span>${amHost()?'You are the auction host. Your browser validates every bid and broadcasts the official room state.':'The host validates every bid, purse and squad rule before it becomes official.'}</span></div>
   ${amHost()?`<button class="btn primary" data-action="start-auction" style="width:100%;margin-top:14px" ${g.teams.length<2?'disabled':''}>${g.teams.length<2?'Need at least 2 teams':'Start live auction'}</button>`:'<div class="waiting" style="margin-top:16px"><span class="spinner"></span><span class="small-copy muted">Waiting for host to start…</span></div>'}</aside></div>${footer()}`;
 }
@@ -219,14 +220,14 @@ function renderAuction(){
   const feed=g.activity.slice(-26).reverse().map(e=>`<div class="feed-item ${e.kind||''}">${esc(e.text)}</div>`).join('');
   const role=ROLE_LABEL[p.role]; const pct=100; const war=biddingWarLabel(g);
   return `${header()}${war}<main class="auction-shell"><aside class="auction-col left card auction-side"><div class="row-between"><div class="section-label">Franchise board</div><span class="mini-pill">${g.teams.length}</span></div>${teams}<div style="height:12px"></div><div class="section-label">My squad</div><div class="my-squad">${mine||'<div class="empty" style="padding:14px;font-size:11px">No buys yet.</div>'}</div></aside>
-  <section class="auction-col card auction-main"><div class="auction-stage"><div class="stage-top"><div><div class="live-dot">LIVE AUCTION FLOOR</div><div class="lot-tag" style="margin-top:7px">${esc(lot.setLabel)} · LOT ${a.index+1}/${a.queue.length}${a.round===2?' · RECALL':''}</div></div><div class="timer" id="timer" style="--pct:${pct}"><span id="timer-text">${g.settings.timerSeconds}</span></div></div>
+  <section class="auction-col card auction-main"><div class="auction-stage">${a.paused?'<div class="paused-banner">Auction paused by host</div>':''}<div class="stage-top"><div><div class="live-dot">LIVE AUCTION FLOOR</div><div class="lot-tag" style="margin-top:7px">${esc(lot.setLabel)} · LOT ${a.index+1}/${a.queue.length}${a.round===2?' · RECALL':''}</div></div><div class="timer" id="timer" style="--pct:${pct}"><span id="timer-text">${g.settings.timerSeconds}</span></div></div>
   <div class="player-stage"><div class="player-visual">${photoMarkup(p)}<span class="origin-tag">${p.originalTeam} · ${p.overseas?'OVERSEAS':'INDIA'}</span><div class="player-initials">${initials(p.name)}</div><div class="player-visual-meta"><div class="role">${role}</div><div class="tiny muted" style="margin-top:4px">Game reserve ${fmtPrice(p.basePrice)}</div></div></div>
   <div class="player-copy"><div class="player-tags"><span class="tag">${role}</span><span class="tag">${p.overseas?'Overseas':'Indian'}</span><span class="tag">Rating ${p.rating}</span></div><h1>${esc(p.name)}</h1><div class="bid-block"><div class="bid-caption">${lead?'Current bid':'Reserve price'}</div><div class="big-price">${fmtPrice(a.currentBid)}</div><div class="leader-name">${lead?`Highest: <strong>${esc(lead.name)}</strong>`:'Waiting for the opening bid'}</div>
   <div class="bid-actions"><button class="bid-btn" data-action="bid" ${!can||a.status!=='live'?'disabled':''}>${lead?`BID ${fmtPrice(next)}`:`OPEN AT ${fmtPrice(next)}`}</button><button class="pass-btn ${passed?'undo':''}" data-action="pass" ${a.status!=='live'||a.paused||a.highestTeamId===me?.id?'disabled':''}>${passed?'UNDO PASS':'PASS'}</button></div><div class="reason">${passed?'Passed for this player — UNDO PASS stays available until the hammer falls.':can?`Next increment: ${fmtPrice(incrementFor(a.currentBid))} · Max safe bid ${fmtPrice(maxAllowedBid(me,g.settings))}`:esc(reason)}</div></div></div></div>
   ${a.status==='sold'?`<div class="sold-overlay"><div class="sold-rays"></div><div class="gavel-swing">🔨</div><div class="hammer-card">${a.resolution?.war?'<div class="sold-war">🔥 BIDDING WAR WON</div>':''}<div class="hammer-word">SOLD</div><div class="sold-player">${esc(p.name)}</div><div class="sold-to">${crest(g.teams.find(t=>t.id===a.resolution.teamId),'sm')}<span>TO <strong>${esc(g.teams.find(t=>t.id===a.resolution.teamId)?.name||'')}</strong></span></div><div class="hammer-price">${fmtPrice(a.resolution.price)}</div></div></div>`:''}
   ${a.status==='unsold'?`<div class="sold-overlay"><div class="hammer-card"><div class="hammer-word unsold">UNSOLD</div><div class="hammer-sub">${esc(p.name)} goes to ${a.round===1?'the recall list':'the archives'}</div></div></div>`:''}
   </div><div class="auction-mobile-stats"><div class="metric"><span>Purse</span><strong>${fmtPrice(me?.budget||0)}</strong></div><div class="metric"><span>Squad</span><strong>${me?.players.length||0}/${g.settings.squadSize}</strong></div><div class="metric"><span>Overseas</span><strong>${overseasCount(me||{players:[]})}/${g.settings.overseasLimit}</strong></div></div></section>
-  <aside class="auction-col right card auction-side"><div class="section-label">Room activity</div><div class="feed" id="feed">${feed||'<div class="feed-item">Auction activity will appear here.</div>'}</div><div class="chat-box"><input class="input" id="chat-input" maxlength="70" placeholder="Auction chat… keep it clean"><button class="icon-btn" data-action="send-chat">↗</button></div><div class="reactions"><button class="reaction" data-action="reaction" data-value="🔥">🔥</button><button class="reaction" data-action="reaction" data-value="😂">😂</button><button class="reaction" data-action="reaction" data-value="💀">💀</button><button class="reaction" data-action="reaction" data-value="👏">👏</button></div><div style="height:18px"></div><div class="section-label">Auction control</div>${amHost()?`<div style="display:grid;grid-template-columns:1fr 1fr;gap:7px"><button class="btn small secondary" data-action="pause">${a.paused?'Resume':'Pause'}</button><button class="btn small ghost" data-action="force-next">Skip lot</button></div>`:`<div class="small-copy muted">Host controls the hammer and auction flow.</div>`}<button class="btn small broadcast-toggle" data-action="toggle-broadcast" style="width:100%;margin-top:7px">🏟️ Broadcast screen</button><div class="summary-block"><span>Pool</span><strong>${a.queue.length} lots</strong></div><div class="summary-block"><span>Sold</span><strong>${a.sold.length}</strong></div><div class="summary-block"><span>Recall</span><strong>${a.round===2?'Active':`${a.unsold.length} waiting`}</strong></div></aside></main>`;
+  <aside class="auction-col right card auction-side"><div class="section-label">Room activity</div><div class="feed" id="feed">${feed||'<div class="feed-item">Auction activity will appear here.</div>'}</div><div class="chat-box"><input class="input" id="chat-input" maxlength="70" placeholder="Auction chat… keep it clean"><button class="icon-btn" data-action="send-chat">↗</button></div><div class="reactions"><button class="reaction" data-action="reaction" data-value="🔥">🔥</button><button class="reaction" data-action="reaction" data-value="😂">😂</button><button class="reaction" data-action="reaction" data-value="💀">💀</button><button class="reaction" data-action="reaction" data-value="👏">👏</button></div><div style="height:18px"></div><div class="section-label">Auction control</div>${amHost()?`<div style="display:grid;grid-template-columns:1fr 1fr;gap:7px"><button class="btn small secondary" data-action="pause">${a.paused?'▶ Continue auction':'⏸ Pause auction'}</button><button class="btn small ghost" data-action="force-next">Skip lot</button></div>`:`<div class="small-copy muted">Host controls the hammer and auction flow.</div>`}<button class="btn small broadcast-toggle" data-action="toggle-broadcast" style="width:100%;margin-top:7px">🏟️ Broadcast screen</button><div class="summary-block"><span>Pool</span><strong>${a.queue.length} lots</strong></div><div class="summary-block"><span>Sold</span><strong>${a.sold.length}</strong></div><div class="summary-block"><span>Recall</span><strong>${a.round===2?'Active':`${a.unsold.length} waiting`}</strong></div></aside></main>`;
 }
 
 function renderBroadcastAuction(){
@@ -234,18 +235,100 @@ function renderBroadcastAuction(){
   const a=g.auction,lead=g.teams.find(t=>t.id===a.highestTeamId),role=ROLE_LABEL[p.role],war=biddingWarLabel(g);
   const board=g.teams.map((t,i)=>`<div class="broadcast-team ${a.highestTeamId===t.id?'leading':''} ${a.passedTeamIds.includes(t.id)?'passed':''}"><span class="broadcast-rank">${String(i+1).padStart(2,'0')}</span>${crest(t,'sm')}<div><strong>${esc(t.name)}</strong><span>${t.players.length}/${g.settings.squadSize} players · ${overseasCount(t)}/${g.settings.overseasLimit} OS</span></div><b>${fmtPrice(t.budget)}</b></div>`).join('');
   return `<div class="broadcast-shell">${war}<div class="broadcast-top"><div class="brand broadcast-brand"><span class="brand-mark"><span>H</span></span>HAMMER<span style="color:var(--accent)">XI</span></div><div class="broadcast-live"><span class="live-dot">LIVE AUCTION</span><span>${esc(lot.setLabel)} · LOT ${a.index+1}/${a.queue.length}</span></div><button class="btn small secondary" data-action="toggle-broadcast">Exit broadcast</button></div>
-  <main class="broadcast-main"><section class="broadcast-player"><div class="broadcast-photo">${photoMarkup(p)}<div class="player-initials">${initials(p.name)}</div><span class="origin-tag">${p.originalTeam} · ${p.overseas?'OVERSEAS':'INDIA'}</span></div><div class="broadcast-player-copy"><div class="player-tags"><span class="tag">${role}</span><span class="tag">${p.overseas?'Overseas':'Indian'}</span><span class="tag">Rating ${p.rating}</span></div><h1>${esc(p.name)}</h1><div class="broadcast-bid-label">${lead?'CURRENT BID':'RESERVE PRICE'}</div><div class="broadcast-price">${fmtPrice(a.currentBid)}</div><div class="broadcast-leader">${lead?`LEADING · <strong>${esc(lead.name)}</strong>`:'WAITING FOR THE OPENING BID'}</div></div><div class="broadcast-clock timer" id="timer"><span id="timer-text">${g.settings.timerSeconds}</span></div></section>
+  <main class="broadcast-main">${a.paused?'<div class="paused-banner">Auction paused by host</div>':''}<section class="broadcast-player"><div class="broadcast-photo">${photoMarkup(p)}<div class="player-initials">${initials(p.name)}</div><span class="origin-tag">${p.originalTeam} · ${p.overseas?'OVERSEAS':'INDIA'}</span></div><div class="broadcast-player-copy"><div class="player-tags"><span class="tag">${role}</span><span class="tag">${p.overseas?'Overseas':'Indian'}</span><span class="tag">Rating ${p.rating}</span></div><h1>${esc(p.name)}</h1><div class="broadcast-bid-label">${lead?'CURRENT BID':'RESERVE PRICE'}</div><div class="broadcast-price">${fmtPrice(a.currentBid)}</div><div class="broadcast-leader">${lead?`LEADING · <strong>${esc(lead.name)}</strong>`:'WAITING FOR THE OPENING BID'}</div></div><div class="broadcast-clock timer" id="timer"><span id="timer-text">${g.settings.timerSeconds}</span></div></section>
   <aside class="broadcast-board"><div class="section-label">FRANCHISE BOARD</div>${board}</aside>
   ${a.status==='sold'?`<div class="sold-overlay broadcast-sold"><div class="sold-rays"></div><div class="gavel-swing">🔨</div><div class="hammer-card">${a.resolution?.war?'<div class="sold-war">🔥 BIDDING WAR WON</div>':''}<div class="hammer-word">SOLD</div><div class="sold-player">${esc(p.name)}</div><div class="sold-to">${crest(g.teams.find(t=>t.id===a.resolution.teamId),'sm')}<span>TO <strong>${esc(g.teams.find(t=>t.id===a.resolution.teamId)?.name||'')}</strong></span></div><div class="hammer-price">${fmtPrice(a.resolution.price)}</div></div></div>`:''}
   ${a.status==='unsold'?`<div class="sold-overlay broadcast-sold"><div class="hammer-card"><div class="hammer-word unsold">UNSOLD</div><div class="sold-player">${esc(p.name)}</div></div></div>`:''}
   </main></div>`;
 }
 
+
+function ensurePostAuction(g){
+  g.postAuction=g.postAuction||{tradeProposals:[],tradesCompleted:0};
+  g.teams.forEach(t=>{t.xi=t.xi||{playerIds:[],captainId:null,wicketkeeperId:null,locked:false}});
+  return g.postAuction;
+}
+function renderPostAuction(){
+  const g=app.game;ensurePostAuction(g);
+  return `${header()}<div class="post-shell"><section class="card post-hero"><div class="eyebrow">AUCTION COMPLETE</div><h1>Before the final XI...</h1><p>The squads are bought. The host can open a quick player-for-player trade window, or skip it and move straight to Playing XI selection.</p><div class="post-flow"><span class="done">Auction ✓</span><span>Trade window</span><span>Playing XI</span><span>Final reveal</span></div>${amHost()?`<div class="post-actions"><button class="btn primary" data-action="open-trades">🤝 Open trade window</button><button class="btn secondary" data-action="skip-trades">Skip trades → Playing XI</button></div>`:`<div class="waiting"><span class="spinner"></span><span>Waiting for the host to choose the next stage…</span></div>`}</section></div>${footer()}`;
+}
+function renderTradeWindow(){
+  const g=app.game,post=ensurePostAuction(g),me=getMyTeam();
+  const myPlayers=me?.players||[];
+  const targetOptions=g.teams.filter(t=>t.id!==me?.id).flatMap(t=>t.players.map(b=>`<option value="${t.id}::${b.playerId}">${esc(t.name)} — ${esc(byId(b.playerId)?.name||'Player')}</option>`)).join('');
+  const myOptions=myPlayers.map(b=>`<option value="${b.playerId}">${esc(byId(b.playerId)?.name||'Player')}</option>`).join('');
+  const proposals=post.tradeProposals.slice().reverse().map(tr=>{
+    const from=g.teams.find(t=>t.id===tr.fromTeamId),to=g.teams.find(t=>t.id===tr.toTeamId),offer=byId(tr.offerPlayerId),want=byId(tr.targetPlayerId);
+    const incoming=tr.toTeamId===me?.id&&tr.status==='pending';
+    return `<div class="trade-row ${tr.status}"><div><strong>${esc(from?.name||'Team')}</strong><span>offers ${esc(offer?.name||'Player')} for ${esc(want?.name||'Player')} · ${esc(to?.name||'Team')}</span></div><b>${tr.status.toUpperCase()}</b>${incoming?`<div class="trade-actions"><button class="btn small primary" data-action="trade-accept" data-trade="${tr.id}">Accept</button><button class="btn small ghost" data-action="trade-reject" data-trade="${tr.id}">Reject</button></div>`:''}</div>`;
+  }).join('');
+  return `${header()}<div class="trade-shell"><section class="card trade-market"><div class="row-between"><div><div class="eyebrow">OPTIONAL TRADE WINDOW</div><h1>Make the last deal.</h1><p class="muted">V2 trades are simple one-player-for-one-player swaps. Both squads must still respect the overseas limit.</p></div><span class="mini-pill">${post.tradesCompleted} completed</span></div>
+  <div class="trade-builder"><div class="field"><label class="label">Offer from ${esc(me?.name||'your team')}</label><select class="select" id="trade-offer">${myOptions||'<option>No players</option>'}</select></div><div class="trade-swap">⇄</div><div class="field"><label class="label">Player you want</label><select class="select" id="trade-target">${targetOptions||'<option>No trade targets</option>'}</select></div><button class="btn primary" data-action="trade-propose" ${!myPlayers.length||!targetOptions?'disabled':''}>Send trade offer</button></div>
+  <div class="section-label" style="margin-top:24px">Trade desk</div><div class="trade-list">${proposals||'<div class="empty">No offers yet.</div>'}</div></section>
+  <aside class="card trade-side"><h3>Trade rules</h3><p>• Player-for-player only<br>• Receiver must accept<br>• Overseas squad limits still apply<br>• Host can end the window at any time</p>${amHost()?`<button class="btn secondary" data-action="close-trades" style="width:100%;margin-top:16px">End trades → Playing XI</button>`:'<div class="waiting"><span class="spinner"></span><span>Host controls when trading ends.</span></div>'}</aside></div>${footer()}`;
+}
+function xiSelectedOverseas(team){return (team.xi?.playerIds||[]).filter(id=>byId(id)?.overseas).length}
+function xiTargetSize(team){
+  const players=team?.players||[],domestic=players.filter(b=>!byId(b.playerId)?.overseas).length,overseas=players.length-domestic;
+  return Math.min(11,domestic+Math.min(4,overseas));
+}
+function autoPickXi(team){
+  ensurePostAuction(app.game);
+  const sorted=team.players.map(b=>byId(b.playerId)).filter(Boolean).sort((a,b)=>b.rating-a.rating);
+  const chosen=[],wk=sorted.find(p=>p.role==='WK');
+  if(wk){chosen.push(wk.id)}
+  for(const p of sorted){
+    if(chosen.includes(p.id)||chosen.length>=11)continue;
+    const os=chosen.filter(id=>byId(id)?.overseas).length;
+    if(p.overseas&&os>=4)continue;
+    chosen.push(p.id);
+  }
+  team.xi.playerIds=chosen.slice(0,11);
+  team.xi.captainId=team.xi.playerIds[0]||null;
+  team.xi.wicketkeeperId=team.xi.playerIds.find(id=>byId(id)?.role==='WK')||null;
+  team.xi.locked=false;
+}
+function validateXi(team){
+  const ids=team.xi?.playerIds||[],required=xiTargetSize(team);
+  if(required===0)return [true,''];
+  if(ids.length!==required)return [false,required===11?'Pick exactly 11 players':`Pick the largest legal lineup of ${required}`];
+  if(xiSelectedOverseas(team)>4)return [false,'Playing XI can have at most 4 overseas players'];
+  if(!team.xi.captainId||!ids.includes(team.xi.captainId))return [false,'Choose a captain from the XI'];
+  const squadHasWK=team.players.some(b=>byId(b.playerId)?.role==='WK');
+  if(squadHasWK&&!ids.some(id=>byId(id)?.role==='WK'))return [false,'Include at least one wicketkeeper'];
+  if(ids.some(id=>byId(id)?.role==='WK')&&(!team.xi.wicketkeeperId||!ids.includes(team.xi.wicketkeeperId)||byId(team.xi.wicketkeeperId)?.role!=='WK'))return [false,'Choose the wicketkeeper'];
+  return [true,''];
+}
+function renderXiBuilder(){
+  const g=app.game;ensurePostAuction(g);const me=getMyTeam(),xi=me?.xi||{playerIds:[]},ids=xi.playerIds||[],required=xiTargetSize(me);
+  const squad=(me?.players||[]).map(b=>{const p=byId(b.playerId),selected=ids.includes(b.playerId);return `<button class="xi-player ${selected?'selected':''}" data-action="xi-toggle" data-player="${b.playerId}" ${xi.locked?'disabled':''}><span class="xi-check">${selected?'✓':'+'}</span><div><strong>${esc(p?.name||'Player')}</strong><span>${esc(ROLE_LABEL[p?.role]||'Player')} · ${p?.overseas?'Overseas':'India'} · Rating ${p?.rating||'—'}</span></div></button>`}).join('');
+  const selectedPlayers=ids.map(id=>byId(id)).filter(Boolean);
+  const capOptions=selectedPlayers.map(p=>`<option value="${p.id}" ${xi.captainId===p.id?'selected':''}>${esc(p.name)}</option>`).join('');
+  const wkOptions=selectedPlayers.filter(p=>p.role==='WK').map(p=>`<option value="${p.id}" ${xi.wicketkeeperId===p.id?'selected':''}>${esc(p.name)}</option>`).join('');
+  const status=g.teams.map(t=>{const need=xiTargetSize(t);return `<div class="xi-status">${crest(t,'sm')}<span>${esc(t.name)}</span><b class="${t.xi?.locked?'ok':''}">${t.xi?.locked?'LOCKED':`${t.xi?.playerIds?.length||0}/${need}`}</b></div>`}).join('');
+  const [valid,why]=validateXi(me);
+  return `${header()}<div class="xi-shell"><section class="card xi-main"><div class="row-between"><div><div class="eyebrow">PLAYING XI BUILDER</div><h1>${esc(me?.name||'Your XI')}</h1><p class="muted">${required===11?'Pick 11 players.':'This squad cannot form a full legal XI, so pick its largest legal lineup.'} Maximum 4 overseas players. Choose your captain and wicketkeeper.</p></div><div class="xi-count"><strong>${ids.length}/${required}</strong><span>${xiSelectedOverseas(me)}/4 overseas</span></div></div><div class="xi-grid">${squad}</div></section>
+  <aside class="card xi-side"><div class="section-label">XI controls</div><button class="btn secondary" data-action="xi-auto" style="width:100%" ${xi.locked?'disabled':''}>Auto-pick strongest XI</button><div class="field" style="margin-top:14px"><label class="label">Captain</label><select class="select" id="xi-captain" ${xi.locked||!capOptions?'disabled':''}><option value="">Choose captain</option>${capOptions}</select></div><div class="field"><label class="label">Wicketkeeper</label><select class="select" id="xi-keeper" ${xi.locked||!wkOptions?'disabled':''}><option value="">Choose keeper</option>${wkOptions}</select></div><button class="btn primary" data-action="xi-lock" style="width:100%;margin-top:12px" ${xi.locked||!valid?'disabled':''}>${xi.locked?'XI locked':'Lock Playing XI'}</button>${!valid&&!xi.locked?`<div class="reason">${esc(why)}</div>`:''}<div class="section-label" style="margin-top:22px">Room status</div><div class="xi-status-list">${status}</div>${amHost()?`<button class="btn ghost" data-action="xi-autofill-all" style="width:100%;margin-top:12px">Auto-fill unlocked teams</button><button class="btn primary" data-action="reveal-results" style="width:100%;margin-top:8px" ${g.teams.every(t=>t.xi?.locked)?'':'disabled'}>Reveal final results</button>`:'<div class="waiting" style="margin-top:14px"><span class="spinner"></span><span>Waiting for every team to lock an XI.</span></div>'}</aside></div>${footer()}`;
+}
+function newspaperData(g){
+  const sold=g.auction?.sold||[],post=ensurePostAuction(g);
+  const biggest=sold.length?[...sold].sort((a,b)=>b.price-a.price)[0]:null;
+  const bp=biggest?byId(biggest.playerId):null,bt=biggest?g.teams.find(t=>t.id===biggest.teamId):null;
+  const spender=[...g.teams].sort((a,b)=>(g.settings.purse-b.budget)-(g.settings.purse-a.budget))[0];
+  const bidEntry=Object.entries(g.stats?.bidCounts||{}).sort((a,b)=>b[1]-a[1])[0];
+  const bidder=bidEntry?g.teams.find(t=>t.id===bidEntry[0]):null;
+  return {biggest,bp,bt,spender,bidder,bids:bidEntry?.[1]||0,trades:post.tradesCompleted||0,wars:sold.filter(x=>x.war).length};
+}
+function renderNewspaper(g){
+  const n=newspaperData(g);
+  return `<section class="card newspaper"><div class="newspaper-mast"><span>HAMMERXI</span><strong>THE AUCTION DAILY</strong><small>ROOM ${esc(g.roomCode)} · V2 EDITION</small></div><div class="newspaper-grid"><article class="newspaper-lead"><div class="newspaper-kicker">FRONT PAGE</div><h2>${n.bp?`${esc(n.bp.name)} goes for ${fmtPrice(n.biggest.price)}`:'The hammer falls on another auction night'}</h2><p>${n.bt?`${esc(n.bt.name)} landed the night's biggest purchase after the live auction floor closed.`:'Final squads are now locked.'}</p></article><article><div class="newspaper-kicker">MARKET</div><h3>${esc(n.spender?.name||'Franchise')} spent big</h3><p>${fmtPrice(round2(g.settings.purse-(n.spender?.budget||g.settings.purse)))} committed across the squad.</p></article><article><div class="newspaper-kicker">AUCTION DESK</div><h3>${n.wars} bidding war${n.wars===1?'':'s'}</h3><p>${n.bidder?`${esc(n.bidder.name)} placed ${n.bids} accepted bids.`:'Every franchise played its part.'}</p></article><article><div class="newspaper-kicker">TRANSFER DESK</div><h3>${n.trades} completed trade${n.trades===1?'':'s'}</h3><p>The optional trade window closed before Playing XIs were locked.</p></article></div><button class="btn secondary" data-action="download-newspaper">Download newspaper poster</button></section>`;
+}
+
 function bestBuy(team){if(!team.players.length)return null;return [...team.players].sort((a,b)=>{const pa=byId(a.playerId),pb=byId(b.playerId);return (pb.rating/(b.price+.25))-(pa.rating/(a.price+.25))})[0]}
 function renderResults(){
-  const g=app.game,me=getMyTeam();
-  const cards=g.teams.map(t=>{const spent=round2(g.settings.purse-t.budget),bb=bestBuy(t),[a,b]=colorsForTeam(t);return `<article class="card result-team" style="--team-a:${a};--team-b:${b}"><div class="result-head">${crest(t,'lg')}<div class="copy"><h3>${esc(t.name)}</h3><p>${esc(t.ownerName)} · ${t.players.length} players</p></div>${t.id===me?.id?'<span class="host-badge">YOUR TEAM</span>':''}</div><div class="result-metrics"><div class="metric"><span>Spent</span><strong>${fmtPrice(spent)}</strong></div><div class="metric"><span>Left</span><strong>${fmtPrice(t.budget)}</strong></div><div class="metric"><span>Overseas</span><strong>${overseasCount(t)}</strong></div></div><div class="players-cloud">${t.players.slice().sort((x,y)=>y.price-x.price).map(x=>`<span class="player-chip">${esc(byId(x.playerId)?.name)} · ${fmtPrice(x.price)}</span>`).join('')||'<span class="muted tiny">No purchases</span>'}</div>${bb?`<div class="rule-note" style="margin-top:12px">Value pick: <strong>${esc(byId(bb.playerId)?.name)}</strong> at ${fmtPrice(bb.price)} — based on HammerXI rating ÷ auction price.</div>`:''}<div class="result-actions"><button class="btn small primary" data-action="story" data-team="${t.id}">Download story card</button></div></article>`}).join('');
-  return `${header()}<div class="results-layout"><section class="card result-hero"><div><div class="eyebrow">Auction complete</div><h1 class="setup-title" style="font-size:38px;margin-top:8px">The squads are locked.</h1><p class="muted">Nothing is saved on a HammerXI account. Download what you want before you leave.</p></div><div class="result-actions"><button class="btn secondary" data-action="csv">Download auction CSV</button><button class="btn ghost" data-action="leave">Leave room</button></div></section><div class="result-grid">${cards}</div></div>${footer()}`;
+  const g=app.game,me=getMyTeam();ensurePostAuction(g);
+  const cards=g.teams.map(t=>{const spent=round2(g.settings.purse-t.budget),bb=bestBuy(t),[a,b]=colorsForTeam(t),xiIds=t.xi?.playerIds||[],xiText=xiIds.map(id=>byId(id)?.name).filter(Boolean).join(' · ');return `<article class="card result-team" style="--team-a:${a};--team-b:${b}"><div class="result-head">${crest(t,'lg')}<div class="copy"><h3>${esc(t.name)}</h3><p>${esc(t.ownerName)} · ${t.players.length} players</p></div>${t.id===me?.id?'<span class="host-badge">YOUR TEAM</span>':''}</div><div class="result-metrics"><div class="metric"><span>Spent</span><strong>${fmtPrice(spent)}</strong></div><div class="metric"><span>Left</span><strong>${fmtPrice(t.budget)}</strong></div><div class="metric"><span>Overseas</span><strong>${overseasCount(t)}</strong></div></div><div class="players-cloud">${t.players.slice().sort((x,y)=>y.price-x.price).map(x=>`<span class="player-chip">${esc(byId(x.playerId)?.name)} · ${fmtPrice(x.price)}</span>`).join('')||'<span class="muted tiny">No purchases</span>'}</div>${xiText?`<div class="xi-result"><span>PLAYING XI</span><p>${esc(xiText)}</p><small>Captain: ${esc(byId(t.xi?.captainId)?.name||'—')} · WK: ${esc(byId(t.xi?.wicketkeeperId)?.name||'—')}</small></div>`:''}${bb?`<div class="rule-note" style="margin-top:12px">Value pick: <strong>${esc(byId(bb.playerId)?.name)}</strong> at ${fmtPrice(bb.price)} — based on HammerXI rating ÷ auction price.</div>`:''}<div class="result-actions"><button class="btn small primary" data-action="story" data-team="${t.id}">Download story card</button></div></article>`}).join('');
+  return `${header()}<div class="results-layout" data-hof="${g.settings.hallOfFame?'1':'0'}">${renderNewspaper(g)}<section class="card result-hero"><div><div class="eyebrow">Auction complete</div><h1 class="setup-title" style="font-size:38px;margin-top:8px">The squads are locked.</h1><p class="muted">Nothing is saved on a HammerXI account. Download what you want before you leave.</p></div><div class="result-actions"><button class="btn secondary" data-action="csv">Download auction CSV</button><button class="btn ghost" data-action="leave">Leave room</button></div></section><div class="result-grid">${cards}</div></div>${footer()}`;
 }
 
 function rulesModal(){if(!app.rules)return '';return `<div class="modal-backdrop" data-action="close-rules"><div class="modal card" onclick="event.stopPropagation()"><div class="row-between"><div><div class="eyebrow">HammerXI rules</div><h2>Fast enough for friends. Strict enough to feel real.</h2></div><button class="icon-btn" data-action="close-rules">×</button></div><div class="rules-list">
@@ -262,7 +345,7 @@ ${[
 ].map((x,i)=>`<div class="rule-item"><div class="rule-num">${i+1}</div><div><strong>${x[0]}</strong><p>${x[1]}</p></div></div>`).join('')}</div><button class="btn primary" data-action="close-rules" style="width:100%;margin-top:20px">Got it</button></div></div>`}
 function render(){
   const root=$('#app');
-  const page=app.route==='home'?renderHome():app.route==='create'?renderCreate():app.route==='join'?renderJoin():app.route==='lobby'?renderLobby():app.route==='auction'?(app.broadcastMode?renderBroadcastAuction():renderAuction()):app.route==='results'?renderResults():renderHome();
+  const page=app.route==='home'?renderHome():app.route==='create'?renderCreate():app.route==='join'?renderJoin():app.route==='lobby'?renderLobby():app.route==='auction'?(app.broadcastMode?renderBroadcastAuction():renderAuction()):app.route==='postAuction'?renderPostAuction():app.route==='trades'?renderTradeWindow():app.route==='xi'?renderXiBuilder():app.route==='results'?renderResults():renderHome();
   root.innerHTML=`<div class="shell">${page}</div>${rulesModal()}`;
   if(app.route==='auction'){updateTimerDom();hydratePlayerPhoto()}
 }
@@ -282,7 +365,7 @@ async function initNetwork(code){
   let net;
   try{
     if(typeof RTCPeerConnection==='undefined' || typeof WebSocket==='undefined') throw new Error('This browser does not support required realtime APIs');
-    const selfId=peerSelfId; const room=joinPeerRoom({appId:'hammerxi-auction-night-v1',password:`hx-${code}`},code); const wire=room.makeAction('wire'); const peers=new Set();
+    const selfId=peerSelfId; const room=joinPeerRoom({appId:'hammerxi-auction-night-v2',password:`hx-${code}`},code); const wire=room.makeAction('wire'); const peers=new Set();
     net={kind:'p2p',selfId,roomCode:code,peers,send:(type,payload,target)=>wire.send({type,payload},{...(target?{target}: {})}),close:()=>room.leave()};
     wire.onMessage=(packet,{peerId})=>receiveNetwork(packet,peerId);
     room.onPeerJoin=peerId=>{if(!peers.has(peerId)){peers.add(peerId);onPeerJoin(peerId)}};
@@ -346,28 +429,125 @@ function handleJoin(peerId,ident){
 }
 function handleCommand(peerId,cmd){
   if(!app.game||!cmd)return;
-  const team=app.game.teams.find(t=>t.ownerPeerId===peerId);
+  const g=app.game,team=g.teams.find(t=>t.ownerPeerId===peerId);
   if(cmd.type==='setting')return applySetting(peerId,cmd);
   if(cmd.type==='start')return startAuction(peerId);
   if(cmd.type==='chat'){const text=String(cmd.text||'').trim().slice(0,70);if(text&&team){addActivity(`${team.ownerName}: ${text}`,'');broadcast()}return}
   if(cmd.type==='reaction'){if(team){addActivity(`${team.ownerName} reacted ${String(cmd.value||'').slice(0,4)}`);broadcast()}return}
-  if(app.game.phase!=='auction'||!team)return;
-  if(cmd.type==='bid')placeBid(peerId,team);else if(cmd.type==='pass')passLot(peerId,team);else if(cmd.type==='pause'&&peerId===app.game.hostPeerId)togglePause();else if(cmd.type==='force-next'&&peerId===app.game.hostPeerId){app.game.auction.highestTeamId?resolveSold():resolveUnsold(true)};
+  if(cmd.type==='open-trades'&&peerId===g.hostPeerId)return openTradeWindow();
+  if(cmd.type==='start-xi'&&peerId===g.hostPeerId)return startXiBuilder();
+  if(cmd.type==='trade-propose'&&team)return proposeTrade(team,cmd);
+  if(cmd.type==='trade-respond'&&team)return respondTrade(team,cmd);
+  if(cmd.type==='xi-toggle'&&team)return toggleXiPlayer(team,cmd.playerId);
+  if(cmd.type==='xi-auto'&&team){autoPickXi(team);broadcast();return}
+  if(cmd.type==='xi-role'&&team)return setXiRole(team,cmd.role,cmd.playerId);
+  if(cmd.type==='xi-lock'&&team)return lockXi(team);
+  if(cmd.type==='xi-autofill-all'&&peerId===g.hostPeerId)return autoFillAllXi();
+  if(cmd.type==='reveal-results'&&peerId===g.hostPeerId)return revealResults();
+  if(g.phase!=='auction'||!team)return;
+  if(cmd.type==='bid')placeBid(peerId,team);
+  else if(cmd.type==='pass')passLot(peerId,team);
+  else if(cmd.type==='pause'&&peerId===g.hostPeerId)togglePause();
+  else if(cmd.type==='force-next'&&peerId===g.hostPeerId){g.auction.highestTeamId?resolveSold():resolveUnsold(true)}
 }
+function openTradeWindow(){
+  const g=app.game;ensurePostAuction(g);g.phase='trades';addActivity('Host opened the optional trade window.','sold');app.route='trades';broadcast();
+}
+function startXiBuilder(){
+  const g=app.game;ensurePostAuction(g);g.phase='xi';addActivity('Playing XI selection is open.','sold');app.route='xi';broadcast();
+}
+function proposeTrade(team,cmd){
+  const g=app.game;if(g.phase!=='trades')return;const post=ensurePostAuction(g);
+  const to=g.teams.find(t=>t.id===cmd.toTeamId);if(!to||to.id===team.id)return sendNotice(team.ownerPeerId,'Trade blocked','Choose another franchise.');
+  const own=team.players.find(b=>b.playerId===cmd.offerPlayerId),target=to.players.find(b=>b.playerId===cmd.targetPlayerId);
+  if(!own||!target)return sendNotice(team.ownerPeerId,'Trade blocked','One of those players is no longer available.');
+  const busy=post.tradeProposals.some(x=>x.status==='pending'&&[x.offerPlayerId,x.targetPlayerId].some(id=>id===cmd.offerPlayerId||id===cmd.targetPlayerId));
+  if(busy)return sendNotice(team.ownerPeerId,'Trade blocked','One of those players is already in a pending offer.');
+  const tr={id:uid(),fromTeamId:team.id,toTeamId:to.id,offerPlayerId:cmd.offerPlayerId,targetPlayerId:cmd.targetPlayerId,status:'pending',at:Date.now()};
+  post.tradeProposals.push(tr);addActivity(`${team.name} sent a trade offer to ${to.name}.`,'bid');broadcast();
+}
+function respondTrade(team,cmd){
+  const g=app.game;if(g.phase!=='trades')return;const post=ensurePostAuction(g),tr=post.tradeProposals.find(x=>x.id===cmd.tradeId&&x.status==='pending');
+  if(!tr||tr.toTeamId!==team.id)return;
+  const from=g.teams.find(t=>t.id===tr.fromTeamId),to=g.teams.find(t=>t.id===tr.toTeamId);if(!from||!to)return;
+  if(!cmd.accept){tr.status='rejected';addActivity(`${to.name} rejected a trade from ${from.name}.`);broadcast();return}
+  const fi=from.players.findIndex(b=>b.playerId===tr.offerPlayerId),ti=to.players.findIndex(b=>b.playerId===tr.targetPlayerId);
+  if(fi<0||ti<0){tr.status='expired';broadcast();return}
+  const offer=from.players[fi],want=to.players[ti],offerOS=byId(offer.playerId)?.overseas?1:0,wantOS=byId(want.playerId)?.overseas?1:0;
+  const fromOS=overseasCount(from)-offerOS+wantOS,toOS=overseasCount(to)-wantOS+offerOS;
+  if(fromOS>g.settings.overseasLimit||toOS>g.settings.overseasLimit){tr.status='blocked';sendNotice(team.ownerPeerId,'Trade blocked','The swap would break an overseas squad limit.');broadcast();return}
+  from.players[fi]={...want,tradedFrom:to.id};to.players[ti]={...offer,tradedFrom:from.id};tr.status='accepted';post.tradesCompleted++;
+  post.tradeProposals.forEach(x=>{if(x.status==='pending'&&x.id!==tr.id&&[x.offerPlayerId,x.targetPlayerId].some(id=>id===tr.offerPlayerId||id===tr.targetPlayerId))x.status='expired'});
+  addActivity(`TRADE — ${from.name} and ${to.name} complete a player swap.`,'sold');broadcast();
+}
+function toggleXiPlayer(team,playerId){
+  const g=app.game;if(g.phase!=='xi'||team.xi?.locked)return;ensurePostAuction(g);
+  if(!team.players.some(b=>b.playerId===playerId))return;
+  const ids=team.xi.playerIds,i=ids.indexOf(playerId);
+  if(i>=0){ids.splice(i,1);if(team.xi.captainId===playerId)team.xi.captainId=null;if(team.xi.wicketkeeperId===playerId)team.xi.wicketkeeperId=null}
+  else{if(ids.length>=11)return sendNotice(team.ownerPeerId,'Playing XI full','Remove someone before adding another player.');if(byId(playerId)?.overseas&&xiSelectedOverseas(team)>=4)return sendNotice(team.ownerPeerId,'Overseas XI limit','A Playing XI can have at most 4 overseas players.');ids.push(playerId)}
+  broadcast();
+}
+function setXiRole(team,role,playerId){
+  if(app.game.phase!=='xi'||team.xi?.locked)return;const id=playerId||null;
+  if(id&&!team.xi.playerIds.includes(id))return;
+  if(role==='captain')team.xi.captainId=id;
+  if(role==='wicketkeeper'&&(!id||byId(id)?.role==='WK'))team.xi.wicketkeeperId=id;
+  broadcast();
+}
+function lockXi(team){
+  if(app.game.phase!=='xi')return;const [ok,why]=validateXi(team);if(!ok)return sendNotice(team.ownerPeerId,'XI not ready',why);
+  team.xi.locked=true;addActivity(`${team.name} locked its Playing XI.`,'sold');broadcast();
+}
+function autoFillAllXi(){
+  const g=app.game;if(g.phase!=='xi')return;for(const t of g.teams){if(!t.xi?.locked){autoPickXi(t);const [ok]=validateXi(t);if(ok)t.xi.locked=true}}broadcast();
+}
+function revealResults(){
+  const g=app.game;if(g.phase!=='xi'||!g.teams.every(t=>t.xi?.locked))return;
+  g.phase='results';addActivity('Playing XIs locked. Final reveal is live.','sold');app.route='results';broadcast();
+}
+
 function command(cmd){if(!app.game||!app.network)return;if(amHost())handleCommand(app.network.selfId,cmd);else app.network.send('cmd',cmd,app.game.hostPeerId)}
 function applySetting(peerId,cmd){
   const g=app.game;if(peerId!==g.hostPeerId||g.phase!=='lobby')return;const key=cmd.key;let value=Number(cmd.value);
-  if(key==='maxTeams')value=clamp(value,Math.max(2,g.teams.length),10); else if(key==='squadSize')value=clamp(value,15,20);else if(key==='purse'&&!([100,125,150].includes(value)))return;else if(key==='timerSeconds'&&!([8,10,12,15,20].includes(value)))return;else if(!['maxTeams','squadSize','purse','timerSeconds'].includes(key))return;
+  if(key==='maxTeams')value=clamp(value,Math.max(2,g.teams.length),10);
+  else if(key==='squadSize')value=clamp(value,15,20);
+  else if(key==='purse'&&!([100,125,150].includes(value)))return;
+  else if(key==='timerSeconds'&&!([8,10,12,15,20].includes(value)))return;
+  else if(key==='hallOfFame')value=value===1;
+  else if(!['maxTeams','squadSize','purse','timerSeconds','hallOfFame'].includes(key))return;
   g.settings[key]=value;g.settings.overseasLimit=g.settings.squadSize>=18?7:6;if(key==='purse')g.teams.forEach(t=>{if(!t.players.length)t.budget=value});broadcast();
 }
 function buildPool(count,seed){
   const n=POOL_SIZE_BY_TEAMS[clamp(count,2,10)]; const ranked=[...PLAYERS].sort((a,b)=>b.rating-a.rating||a.name.localeCompare(b.name)); const top=ranked.slice(0,12); const rest=ranked.slice(12); const bands=[];
   for(let i=0;i<rest.length;i+=20)bands.push(...shuffle(rest.slice(i,i+20),`${seed}-${i}`));return [...top,...bands].slice(0,n);
 }
+const SPECIALIST_SPINNERS=new Set([
+  'Rashid Khan','Noor Ahmad','Rahul Chahar','Kuldeep Yadav','Varun Chakaravarthy','Ravi Bishnoi','Yuzvendra Chahal',
+  'Keshav Maharaj','Shreyas Gopal','Mayank Markande','Suyash Sharma','Akeal Hosein','Prashant Solanki','Rehan Ahmed',
+  'Zeeshan Ansari','Vignesh Puthur','Allah Ghazanfar','Mujeeb Ur Rahman','Maheesh Theekshana','Adam Zampa'
+]);
+function auctionGroup(p){
+  if(p.role==='WK')return 'Wicketkeepers';
+  if(p.role==='BAT')return 'Batters';
+  if(p.role==='AR')return 'All-Rounders';
+  if(p.role==='BOWL'&&SPECIALIST_SPINNERS.has(p.name))return 'Spin Bowlers';
+  return 'Pace Bowlers';
+}
 function buildQueue(pool,seed){
-  const marquee=shuffle([...pool].sort((a,b)=>b.rating-a.rating).slice(0,12),`${seed}-marquee`).map(p=>({playerId:p.id,setLabel:'Marquee'}));
-  const rem=pool.filter(p=>!marquee.some(m=>m.playerId===p.id)); const labels={BAT:'Batters',AR:'All-Rounders',WK:'Wicketkeepers',BOWL:'Bowlers'}; const roles=['BAT','AR','WK','BOWL']; const queues=roles.map(r=>shuffle(rem.filter(p=>p.role===r),`${seed}-${r}`)); const out=[...marquee];
-  let cycle=0,added=true;while(added){added=false;for(let ri=0;ri<roles.length;ri++){const q=queues[ri];const chunk=q.splice(0,8);if(chunk.length){added=true;out.push(...chunk.map(p=>({playerId:p.id,setLabel:`${labels[roles[ri]]} · Set ${cycle+1}`})))}}cycle++}
+  const marqueePlayers=[...pool].sort((a,b)=>b.rating-a.rating).slice(0,12);
+  const marquee=shuffle(marqueePlayers,`${seed}-marquee`).map(p=>({playerId:p.id,setLabel:'Marquee · Set 1',category:'Marquee'}));
+  const marqueeIds=new Set(marqueePlayers.map(p=>p.id));
+  const rem=pool.filter(p=>!marqueeIds.has(p.id));
+  const sequence=['Wicketkeepers','Batters','All-Rounders','Spin Bowlers','Pace Bowlers'];
+  const out=[...marquee];
+  for(const category of sequence){
+    const players=shuffle(rem.filter(p=>auctionGroup(p)===category),`${seed}-${category}`);
+    for(let i=0;i<players.length;i+=8){
+      const setNo=Math.floor(i/8)+1;
+      out.push(...players.slice(i,i+8).map(p=>({playerId:p.id,setLabel:`${category} · Set ${setNo}`,category})));
+    }
+  }
   return out;
 }
 function startAuction(peerId){
@@ -412,7 +592,7 @@ function advancePlayer(){
   }
   const p=currentPlayer(g);a.currentBid=p.basePrice;a.highestTeamId=null;a.passedTeamIds=[];a.deadline=Date.now()+g.settings.timerSeconds*1000;a.status='live';a.paused=false;a.pauseRemaining=0;a.resolution=null;a.bidHistory=[];a.war=null;app.lastTensionSecond=null;app.lastTensionLot=null;broadcast();checkLotViability();
 }
-function finishAuction(){const g=app.game;g.phase='results';addActivity('Auction complete. Squads are locked.','sold');app.route='results';broadcast();clearInterval(app.hostClock)}
+function finishAuction(){const g=app.game;ensurePostAuction(g);g.phase='postAuction';addActivity('Auction complete. Post-auction stage is open.','sold');app.route='postAuction';app.broadcastMode=false;broadcast();clearInterval(app.hostClock)}
 function togglePause(){const g=app.game,a=g.auction;if(a.status!=='live')return;if(!a.paused){a.pauseRemaining=Math.max(0,a.deadline-Date.now());a.paused=true;addActivity('Host paused the auction.')}else{a.deadline=Date.now()+Math.max(2500,a.pauseRemaining);a.paused=false;addActivity('Auction resumed.')}broadcast()}
 function startHostClock(){clearInterval(app.hostClock);if(!amHost()||app.game?.phase!=='auction')return;app.hostClock=setInterval(()=>{const a=app.game?.auction;if(!a)return;if((a.status==='sold'||a.status==='unsold')&&!app.advanceTimer)scheduleAdvance();if(a.status==='live'&&!a.paused&&Date.now()>=a.deadline){a.highestTeamId?resolveSold():resolveUnsold()}},180)}
 function startTimerClock(){if(app.timerClock)return;app.timerClock=setInterval(updateTimerDom,120)}
@@ -436,13 +616,26 @@ function drawStory(team){
   x.fillStyle='#5f6a79';x.font='500 18px Segoe UI, Arial, sans-serif';x.fillText('No signup. No saved history. Just auction night.',72,1810);x.fillStyle='#ffffff';x.font='800 33px Segoe UI, Arial, sans-serif';x.fillText(location.host || 'HammerXI',72,1860);
   c.toBlob(blob=>{const url=URL.createObjectURL(blob),ael=document.createElement('a');ael.href=url;ael.download=`hammerxi-${team.name.toLowerCase().replace(/[^a-z0-9]+/g,'-')}-story.png`;ael.click();setTimeout(()=>URL.revokeObjectURL(url),1500)},'image/png');
 }
+function drawNewspaper(){
+  const g=app.game,n=newspaperData(g),c=document.createElement('canvas');c.width=1080;c.height=1350;const x=c.getContext('2d');
+  x.fillStyle='#efe8d6';x.fillRect(0,0,c.width,c.height);x.fillStyle='#171713';x.fillRect(52,52,976,4);
+  x.textAlign='center';x.fillStyle='#171713';x.font='900 34px Georgia, serif';x.fillText('HAMMERXI',540,105);x.font='900 74px Georgia, serif';x.fillText('THE AUCTION DAILY',540,180);x.font='600 18px Georgia, serif';x.fillText(`ROOM ${g.roomCode}  •  V2 EDITION  •  AUCTION NIGHT`,540,222);x.fillRect(52,246,976,3);x.textAlign='left';
+  const headline=n.bp?`${n.bp.name.toUpperCase()} BREAKS THE BANK`:'THE HAMMER FALLS';
+  x.font='900 60px Georgia, serif';wrapText(x,headline,66,345,948,66,3);x.font='600 24px Georgia, serif';x.fillText(n.biggest?`${n.bt?.name||'A franchise'} seal the biggest deal at ${fmtPrice(n.biggest.price)}.`:'Final squads have been locked.',66,500);
+  x.fillRect(66,545,948,2);x.font='900 25px Georgia, serif';x.fillText('MARKET WATCH',66,600);x.font='700 36px Georgia, serif';wrapText(x,`${n.spender?.name||'Franchise'} commit ${fmtPrice(round2(g.settings.purse-(n.spender?.budget||g.settings.purse)))} across the squad.`,66,650,430,45,4);
+  x.font='900 25px Georgia, serif';x.fillText('AUCTION DESK',570,600);x.font='700 36px Georgia, serif';wrapText(x,`${n.wars} bidding war${n.wars===1?'':'s'} lit up the floor. ${n.bidder?.name||'The room'} led the accepted-bid count with ${n.bids}.`,570,650,430,45,5);
+  x.fillRect(66,920,948,2);x.font='900 25px Georgia, serif';x.fillText('TRANSFER DESK',66,975);x.font='700 34px Georgia, serif';wrapText(x,`${n.trades} player-for-player trade${n.trades===1?'':'s'} completed before the Playing XIs were locked.`,66,1025,934,44,4);
+  x.fillRect(66,1220,948,2);x.font='600 18px Georgia, serif';x.fillText('No accounts. No saved history. One auction night.',66,1270);x.textAlign='right';x.fillText(location.host||'HammerXI',1014,1270);
+  c.toBlob(blob=>{const url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=`hammerxi-${g.roomCode}-auction-daily.png`;a.click();setTimeout(()=>URL.revokeObjectURL(url),1200)},'image/png');
+}
+
 function statBox(x,left,top,label,value){x.fillStyle='#0d131c';roundRect(x,left,top,286,135,18,true);x.fillStyle='#707c8d';x.font='700 17px Segoe UI, Arial, sans-serif';x.fillText(label,left+24,top+38);x.fillStyle='#fff';x.font='800 32px Segoe UI, Arial, sans-serif';x.fillText(value,left+24,top+90)}
 function roundRect(ctx,x,y,w,h,r,fill){ctx.beginPath();ctx.roundRect?ctx.roundRect(x,y,w,h,r):(ctx.rect(x,y,w,h));if(fill)ctx.fill()}
 function wrapText(ctx,text,x,y,maxWidth,lineHeight,maxLines=3){const words=text.split(' ');let line='',lines=[];for(const word of words){const test=line?line+' '+word:word;if(ctx.measureText(test).width>maxWidth&&line){lines.push(line);line=word}else line=test}if(line)lines.push(line);lines.slice(0,maxLines).forEach((l,i)=>ctx.fillText(l,x,y+i*lineHeight))}
 function downloadCsv(){const g=app.game;const rows=[['Team','Owner','Player','Role','Overseas','Price (Cr)']];g.teams.forEach(t=>t.players.forEach(b=>{const p=byId(b.playerId);rows.push([t.name,t.ownerName,p.name,ROLE_LABEL[p.role],p.overseas?'Yes':'No',b.price])}));const csv=rows.map(r=>r.map(v=>`"${String(v).replace(/"/g,'""')}"`).join(',')).join('\n');const blob=new Blob([csv],{type:'text/csv'}),url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=`hammerxi-${g.roomCode}-auction.csv`;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000)}
 
 async function createRoom(){
-  try{app.identity=identityFromDraft();const code=roomCode();const net=await initNetwork(code);const t={id:uid(),ownerPeerId:net.selfId,ownerName:app.identity.ownerName,name:app.identity.name,colors:app.identity.colors,mark:app.identity.mark,kind:app.identity.kind,templateId:app.identity.templateId,budget:Number(app.draft.purse),players:[],connected:true};app.game={version:1,roomCode:code,hostPeerId:net.selfId,phase:'lobby',settings:{maxTeams:Number(app.draft.maxTeams),squadSize:Number(app.draft.squadSize),purse:Number(app.draft.purse),timerSeconds:Number(app.draft.timerSeconds),overseasLimit:Number(app.draft.squadSize)>=18?7:6},teams:[t],activity:[{id:uid(),text:`${t.ownerName} created the auction room.`,kind:'',at:Date.now()}],auction:null};app.route='lobby';app.pendingJoin=false;render();toast('Room created',`Invite friends with code ${code}.`,'ok')}catch(e){toast('Check your setup',e.message,'err')}
+  try{app.identity=identityFromDraft();const code=roomCode();const net=await initNetwork(code);const t={id:uid(),ownerPeerId:net.selfId,ownerName:app.identity.ownerName,name:app.identity.name,colors:app.identity.colors,mark:app.identity.mark,kind:app.identity.kind,templateId:app.identity.templateId,budget:Number(app.draft.purse),players:[],connected:true};app.game={version:2,roomCode:code,hostPeerId:net.selfId,phase:'lobby',settings:{maxTeams:Number(app.draft.maxTeams),squadSize:Number(app.draft.squadSize),purse:Number(app.draft.purse),timerSeconds:Number(app.draft.timerSeconds),overseasLimit:Number(app.draft.squadSize)>=18?7:6,hallOfFame:false},teams:[t],activity:[{id:uid(),text:`${t.ownerName} created the auction room.`,kind:'',at:Date.now()}],auction:null};app.route='lobby';app.pendingJoin=false;render();toast('Room created',`Invite friends with code ${code}.`,'ok')}catch(e){toast('Check your setup',e.message,'err')}
 }
 async function joinRoom(){
   try{app.identity=identityFromDraft();const code=app.draft.joinCode.trim().toUpperCase();if(!/^[A-Z2-9]{6}$/.test(code))throw new Error('Enter the 6-character room code');app.pendingJoin=true;app.game=null;app.route='lobby';const net=await initNetwork(code);setTimeout(()=>{if(app.pendingJoin)net.send('join',app.identity)},700);setTimeout(()=>{if(app.pendingJoin)toast('Still looking for host','Check the code and make sure the host has the lobby open.','err')},7000)}catch(e){app.pendingJoin=false;toast('Could not join',e.message,'err')}
@@ -451,7 +644,7 @@ async function leaveRoom(){await closeNetwork();app.game=null;app.identity=null;
 
 // UI events
 document.addEventListener('input',e=>{const k=e.target?.dataset?.draft;if(k){let v=e.target.value;if(['maxTeams','squadSize','purse','timerSeconds'].includes(k))v=Number(v);app.draft[k]=v}});
-document.addEventListener('change',e=>{const k=e.target?.dataset?.draft;if(k){let v=e.target.value;if(['maxTeams','squadSize','purse','timerSeconds'].includes(k))v=Number(v);app.draft[k]=v;if(app.route==='create'&&['maxTeams','squadSize','purse','timerSeconds'].includes(k))render()}const s=e.target?.dataset?.setting;if(s)command({type:'setting',key:s,value:Number(e.target.value)})});
+document.addEventListener('change',e=>{const k=e.target?.dataset?.draft;if(k){let v=e.target.value;if(['maxTeams','squadSize','purse','timerSeconds'].includes(k))v=Number(v);app.draft[k]=v;if(app.route==='create'&&['maxTeams','squadSize','purse','timerSeconds'].includes(k))render()}const s=e.target?.dataset?.setting;if(s)command({type:'setting',key:s,value:Number(e.target.value)});if(e.target?.id==='xi-captain')command({type:'xi-role',role:'captain',playerId:e.target.value||null});if(e.target?.id==='xi-keeper')command({type:'xi-role',role:'wicketkeeper',playerId:e.target.value||null})});
 document.addEventListener('submit',e=>{if(e.target.id==='create-form'){e.preventDefault();createRoom()}if(e.target.id==='join-form'){e.preventDefault();joinRoom()}});
 document.addEventListener('click',e=>{
   const b=e.target.closest('[data-action]');if(!b)return;const a=b.dataset.action;
@@ -461,6 +654,16 @@ document.addEventListener('click',e=>{
   else if(a==='team-mode'){app.draft.teamMode=b.dataset.mode;render()}else if(a==='pick-franchise'){app.draft.franchiseId=b.dataset.id;render()}else if(a==='pick-logo'){app.draft.logoId=b.dataset.id;render()}
   else if(a==='copy-room'){navigator.clipboard?.writeText(app.game.roomCode);toast('Invite code copied',app.game.roomCode,'ok')}
   else if(a==='start-auction'){command({type:'start'})}
+  else if(a==='open-trades'){command({type:'open-trades'})}
+  else if(a==='skip-trades'||a==='close-trades'){command({type:'start-xi'})}
+  else if(a==='trade-propose'){const offer=$('#trade-offer')?.value,target=$('#trade-target')?.value;if(offer&&target){const [toTeamId,targetPlayerId]=target.split('::');command({type:'trade-propose',offerPlayerId:offer,toTeamId,targetPlayerId})}}
+  else if(a==='trade-accept'){command({type:'trade-respond',tradeId:b.dataset.trade,accept:true})}
+  else if(a==='trade-reject'){command({type:'trade-respond',tradeId:b.dataset.trade,accept:false})}
+  else if(a==='xi-toggle'){command({type:'xi-toggle',playerId:b.dataset.player})}
+  else if(a==='xi-auto'){command({type:'xi-auto'})}
+  else if(a==='xi-lock'){command({type:'xi-lock'})}
+  else if(a==='xi-autofill-all'){command({type:'xi-autofill-all'})}
+  else if(a==='reveal-results'){command({type:'reveal-results'})}
   else if(a==='bid'){command({type:'bid'})}
   else if(a==='pass'){command({type:'pass'})}
   else if(a==='pause'){command({type:'pause'})}
@@ -470,6 +673,7 @@ document.addEventListener('click',e=>{
   else if(a==='reaction'){command({type:'reaction',value:b.dataset.value})}
   else if(a==='story'){const t=app.game.teams.find(x=>x.id===b.dataset.team);if(t)drawStory(t)}
   else if(a==='csv'){downloadCsv()}
+  else if(a==='download-newspaper'){drawNewspaper()}
   else if(a==='leave'){leaveRoom()}
 });
 document.addEventListener('keydown',e=>{if(e.key==='Enter'&&e.target?.id==='chat-input'){e.preventDefault();document.querySelector('[data-action="send-chat"]')?.click()}if(e.code==='Space'&&app.route==='auction'&&!app.broadcastMode&&document.activeElement?.tagName!=='INPUT'){e.preventDefault();document.querySelector('[data-action="bid"]')?.click()}if((e.key==='b'||e.key==='B')&&app.route==='auction'&&document.activeElement?.tagName!=='INPUT'){app.broadcastMode=!app.broadcastMode;render()}});
