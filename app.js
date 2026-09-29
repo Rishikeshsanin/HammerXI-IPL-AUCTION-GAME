@@ -21,7 +21,8 @@ const app = {
   },
   identity:null, network:null, game:null, networkStatus:'offline', pendingJoin:false,
   hostClock:null, timerClock:null, advanceTimer:null,
-  photoCache:new Map(), photoInflight:new Map()
+  photoCache:new Map(), photoInflight:new Map(),
+  broadcastMode:false, lastTensionSecond:null, lastTensionLot:null
 };
 
 function colorsForTeam(t){return t?.colors || ['#667085','#98a2b3']}
@@ -40,11 +41,13 @@ function beep(kind='bid'){
   if(!app.sound)return;
   try{
     const C=window.AudioContext||window.webkitAudioContext; const ctx=new C(); const o=ctx.createOscillator(),g=ctx.createGain();
-    o.connect(g);g.connect(ctx.destination); const now=ctx.currentTime;
-    o.type=kind==='sold'?'triangle':'sine';o.frequency.setValueAtTime(kind==='sold'?180:kind==='error'?110:420,now);
-    if(kind==='sold')o.frequency.exponentialRampToValueAtTime(75,now+.18);else o.frequency.exponentialRampToValueAtTime(kind==='bid'?630:80,now+.11);
-    g.gain.setValueAtTime(.0001,now);g.gain.exponentialRampToValueAtTime(.08,now+.01);g.gain.exponentialRampToValueAtTime(.0001,now+.22);
-    o.start(now);o.stop(now+.24);setTimeout(()=>ctx.close(),400);
+    o.connect(g);g.connect(ctx.destination); const now=ctx.currentTime; const tick=kind==='tick';
+    o.type=kind==='sold'?'triangle':tick?'square':'sine';
+    const startFreq=kind==='sold'?180:kind==='error'?110:tick?520:420;
+    const endFreq=kind==='sold'?75:kind==='error'?80:tick?360:630;
+    o.frequency.setValueAtTime(startFreq,now);o.frequency.exponentialRampToValueAtTime(endFreq,now+(tick?.055:.11));
+    g.gain.setValueAtTime(.0001,now);g.gain.exponentialRampToValueAtTime(tick?.045:.08,now+.008);g.gain.exponentialRampToValueAtTime(.0001,now+(tick?.075:.22));
+    o.start(now);o.stop(now+(tick?.09:.24));setTimeout(()=>ctx.close(),tick?160:400);
   }catch{}
 }
 
@@ -190,6 +193,23 @@ async function hydratePlayerPhoto(){
   if(current.src!==photo.src)current.src=photo.src;else if(current.complete)current.classList.add('ready');
   const credit=$('#player-photo-credit');if(credit&&photo.sourceUrl){credit.href=photo.sourceUrl;credit.classList.add('ready')}
 }
+function updateBiddingWar(g){
+  const a=g.auction;if(!a||a.status!=='live')return;
+  const recent=(a.bidHistory||[]).filter(x=>Date.now()-x.at<=15000);a.bidHistory=recent;
+  const tail=recent.slice(-6),teams=[...new Set(tail.map(x=>x.teamId))];
+  const alternating=tail.length>=5&&tail.slice(-5).every((x,i,arr)=>i===0||x.teamId!==arr[i-1].teamId);
+  if(!a.war?.active&&tail.length>=5&&teams.length===2&&alternating){
+    a.war={active:true,teamIds:teams,bidCount:recent.length,since:Date.now()};
+    const names=teams.map(id=>g.teams.find(t=>t.id===id)?.name).filter(Boolean);
+    addActivity(\`BIDDING WAR — \${names.join(' vs ')}.\`,'war');
+  }else if(a.war?.active){a.war.bidCount=recent.length}
+}
+function biddingWarLabel(g){
+  const w=g?.auction?.war;if(!w?.active)return '';
+  const teams=w.teamIds.map(id=>g.teams.find(t=>t.id===id)).filter(Boolean);
+  return \`<div class="war-banner"><span class="war-flame">🔥</span><div><strong>BIDDING WAR</strong><span>\${teams.map(t=>esc(t.name)).join(' <i>VS</i> ')} · \${w.bidCount} bids</span></div></div>\`;
+}
+
 function renderScoreTeam(t,me,g){const passed=g.auction.passedTeamIds.includes(t.id);return `<div class="score-team ${t.id===me?.id?'me':''} ${g.auction.highestTeamId===t.id?'leading':''} ${passed?'passed':''}">${crest(t,'sm')}<div class="meta"><strong>${esc(t.name)}</strong><span>${t.players.length}/${g.settings.squadSize} · ${overseasCount(t)}/${g.settings.overseasLimit} OS</span></div><div class="team-auction-state">${passed?'<span class="pass-state">PASS</span>':''}<div class="money">${fmtPrice(t.budget)}</div></div></div>`}
 function renderAuction(){
   const g=app.game,p=currentPlayer(g),lot=currentLot(g),me=getMyTeam();if(!p||!lot)return renderLobby();
