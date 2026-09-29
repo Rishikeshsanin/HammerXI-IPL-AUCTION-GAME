@@ -360,7 +360,7 @@ async function initNetwork(code){
   let net;
   try{
     if(typeof RTCPeerConnection==='undefined' || typeof WebSocket==='undefined') throw new Error('This browser does not support required realtime APIs');
-    const selfId=peerSelfId; const room=joinPeerRoom({appId:'hammerxi-auction-night-v1',password:`hx-${code}`},code); const wire=room.makeAction('wire'); const peers=new Set();
+    const selfId=peerSelfId; const room=joinPeerRoom({appId:'hammerxi-auction-night-v2',password:`hx-${code}`},code); const wire=room.makeAction('wire'); const peers=new Set();
     net={kind:'p2p',selfId,roomCode:code,peers,send:(type,payload,target)=>wire.send({type,payload},{...(target?{target}: {})}),close:()=>room.leave()};
     wire.onMessage=(packet,{peerId})=>receiveNetwork(packet,peerId);
     room.onPeerJoin=peerId=>{if(!peers.has(peerId)){peers.add(peerId);onPeerJoin(peerId)}};
