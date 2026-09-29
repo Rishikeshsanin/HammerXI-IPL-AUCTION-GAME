@@ -34,7 +34,7 @@ globalThis.document = {
 };
 globalThis.window = { addEventListener(){}, AudioContext: undefined, webkitAudioContext: undefined };
 Object.defineProperty(globalThis, 'navigator', { value: { clipboard: { writeText(){} } }, configurable: true });
-globalThis.location = { host: 'qa.hammerxi.test' };
+globalThis.location = { host: 'qa.hammerxi.test', href: 'https://qa.hammerxi.test/', search: '', hash: '', pathname: '/' };
 
 let source = await readFile(new URL('../app.js', import.meta.url), 'utf8');
 source = source
@@ -51,7 +51,7 @@ const factory = new Function(
     ensurePostAuction, openTradeWindow, startXiBuilder, proposeTrade, respondTrade,
     autoPickXi, validateXi, xiTargetSize, lockXi, autoFillAllXi, revealResults,
     renderPostAuction, renderTradeWindow, renderXiBuilder, renderResults, renderBroadcastAuction, drawNewspaper,
-    applySetting, handleCommand, handleJoin, receiveNetwork, onPeerLeave
+    applySetting, handleCommand, handleJoin, receiveNetwork, onPeerLeave, inviteUrl, applyInviteDeepLink
   };`
 );
 
@@ -66,7 +66,7 @@ const {
   ensurePostAuction, openTradeWindow, startXiBuilder, proposeTrade, respondTrade,
   autoPickXi, validateXi, xiTargetSize, lockXi, autoFillAllXi, revealResults,
   renderPostAuction, renderTradeWindow, renderXiBuilder, renderResults, renderBroadcastAuction, drawNewspaper,
-  applySetting, handleCommand, handleJoin, receiveNetwork, onPeerLeave
+  applySetting, handleCommand, handleJoin, receiveNetwork, onPeerLeave, inviteUrl, applyInviteDeepLink
 } = engine;
 
 const sent = [];
@@ -75,6 +75,16 @@ app.network = {
   send(type, payload, target) { sent.push({ type, payload, target }); }
 };
 app.networkStatus = 'online';
+
+// Direct invite links must carry the room code and open the prefilled join flow.
+const direct=inviteUrl('ABC234');
+ok(direct.includes('room=ABC234'),'Invite URL must contain room query parameter');
+globalThis.location={host:'qa.hammerxi.test',href:'https://qa.hammerxi.test/?room=ABC234',search:'?room=ABC234',hash:'',pathname:'/'};
+app.route='home';app.draft.joinCode='';
+ok(applyInviteDeepLink(),'Valid invite deep link must be recognized');
+eq(app.route,'join','Invite deep link must open Join screen');
+eq(app.draft.joinCode,'ABC234','Invite deep link must prefill room code');
+globalThis.location={host:'qa.hammerxi.test',href:'https://qa.hammerxi.test/',search:'',hash:'',pathname:'/'};
 
 const makeTeam = (id, peer, name, templateIndex) => ({
   id, ownerPeerId: peer, ownerName: name + ' owner', name,

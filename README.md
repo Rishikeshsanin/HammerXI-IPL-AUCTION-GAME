@@ -56,3 +56,8 @@ HammerXI V2 turns the auction into a complete one-session franchise night:
 6. **Optional Hall of Fame** — controlled by the host from the lobby; when disabled the awards ceremony is omitted.
 
 All V2 room state remains ephemeral and browser-to-browser. HammerXI still has no account database or permanent auction history.
+
+
+## Direct invite links
+
+The lobby's **Copy invite link** button copies a full HammerXI URL containing the live room code. Opening that link takes a friend directly to the Join Auction screen with the room code prefilled; they only need to choose their owner/team identity and join.

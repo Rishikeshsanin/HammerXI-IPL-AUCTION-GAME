@@ -25,6 +25,36 @@ const app = {
   broadcastMode:false, lastTensionSecond:null, lastTensionLot:null
 };
 
+function inviteUrl(code){
+  const url=new URL(location.href);
+  url.search='';url.hash='';
+  url.searchParams.set('room',String(code||'').toUpperCase());
+  return url.toString();
+}
+function applyInviteDeepLink(){
+  const code=new URLSearchParams(location.search||'').get('room')?.trim().toUpperCase();
+  if(/^[A-Z2-9]{6}$/.test(code||'')){app.draft.joinCode=code;app.route='join';return true}
+  return false;
+}
+async function copyInviteLink(){
+  if(!app.game?.roomCode)return;
+  const url=inviteUrl(app.game.roomCode);
+  try{
+    if(!navigator.clipboard?.writeText)throw new Error('Clipboard API unavailable');
+    await navigator.clipboard.writeText(url);
+    toast('Invite link copied','Send it to your friends — the room code will already be filled in.','ok');
+  }catch{
+    try{
+      const input=document.createElement('textarea');input.value=url;input.setAttribute('readonly','');input.style.position='fixed';input.style.opacity='0';
+      document.body.appendChild(input);input.select();const copied=document.execCommand?.('copy');input.remove();
+      if(!copied)throw new Error('Copy command failed');
+      toast('Invite link copied','Send it to your friends — the room code will already be filled in.','ok');
+    }catch{
+      toast('Could not copy link',url,'err');
+    }
+  }
+}
+
 function colorsForTeam(t){return t?.colors || ['#667085','#98a2b3']}
 function crest(team,size='sm'){
   if(!team)return '';
@@ -111,7 +141,7 @@ function renderLobby(){
   const teams=g.teams.map(t=>`<div class="team-row ${t.id===me?.id?'me':''}">${crest(t,'sm')}<div class="info"><strong>${esc(t.name)}</strong><span>${esc(t.ownerName)}${t.connected===false?' · disconnected':''}</span></div>${t.ownerPeerId===g.hostPeerId?'<span class="host-badge">Host</span>':''}</div>`).join('');
   const opts=(vals,key,suffix='')=>vals.map(v=>`<option value="${v}" ${g.settings[key]===v?'selected':''}>${v}${suffix}</option>`).join('');
   const pool=POOL_SIZE_BY_TEAMS[clamp(g.teams.length,2,10)];
-  return `${header()}<div class="page-head"><div class="row-between"><div><div class="eyebrow">FRANCHISE LOBBY</div><div class="room-code">${esc(g.roomCode)}</div></div><button class="btn secondary" data-action="copy-room">Copy invite code</button></div></div>
+  return `${header()}<div class="page-head"><div class="row-between"><div><div class="eyebrow">FRANCHISE LOBBY</div><div class="room-code">${esc(g.roomCode)}</div></div><button class="btn secondary" data-action="copy-room">Copy invite link</button></div></div>
   <div class="lobby-layout"><section class="card lobby-main"><div class="row-between"><div><h2 class="setup-title">Franchises</h2><p class="muted small-copy">${g.teams.length} joined · ${g.settings.maxTeams-g.teams.length} seats open</p></div><span class="mini-pill">${connectedLabel()}</span></div><div class="team-list">${teams}${Array.from({length:Math.max(0,g.settings.maxTeams-g.teams.length)},()=>'<div class="team-row" style="opacity:.45"><div class="crest sm" style="background:#151b24">+</div><div class="info"><strong>Open seat</strong><span>Waiting for a friend…</span></div></div>').join('')}</div></section>
   <aside class="card lobby-side"><div class="section-label">Auction settings</div><div class="settings-grid">
   <div class="setting-row"><label>Room capacity</label><select class="select" data-setting="maxTeams" ${amHost()?'':'disabled'}>${opts([2,3,4,5,6,7,8,9,10],'maxTeams',' teams')}</select></div>
@@ -652,7 +682,7 @@ document.addEventListener('click',e=>{
   else if(a==='go-create'){app.route='create';render()}else if(a==='go-join'){app.route='join';render()}
   else if(a==='rules'){app.rules=true;render()}else if(a==='close-rules'){app.rules=false;render()}else if(a==='sound'){app.sound=!app.sound;render();if(app.sound)beep('bid')}
   else if(a==='team-mode'){app.draft.teamMode=b.dataset.mode;render()}else if(a==='pick-franchise'){app.draft.franchiseId=b.dataset.id;render()}else if(a==='pick-logo'){app.draft.logoId=b.dataset.id;render()}
-  else if(a==='copy-room'){navigator.clipboard?.writeText(app.game.roomCode);toast('Invite code copied',app.game.roomCode,'ok')}
+  else if(a==='copy-room'){copyInviteLink()}
   else if(a==='start-auction'){command({type:'start'})}
   else if(a==='open-trades'){command({type:'open-trades'})}
   else if(a==='skip-trades'||a==='close-trades'){command({type:'start-xi'})}
@@ -679,4 +709,5 @@ document.addEventListener('click',e=>{
 document.addEventListener('keydown',e=>{if(e.key==='Enter'&&e.target?.id==='chat-input'){e.preventDefault();document.querySelector('[data-action="send-chat"]')?.click()}if(e.code==='Space'&&app.route==='auction'&&!app.broadcastMode&&document.activeElement?.tagName!=='INPUT'){e.preventDefault();document.querySelector('[data-action="bid"]')?.click()}if((e.key==='b'||e.key==='B')&&app.route==='auction'&&document.activeElement?.tagName!=='INPUT'){app.broadcastMode=!app.broadcastMode;render()}});
 window.addEventListener('beforeunload',()=>{try{app.network?.close?.()}catch{}});
 
+applyInviteDeepLink();
 render();
