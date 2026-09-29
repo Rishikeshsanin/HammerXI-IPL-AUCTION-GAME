@@ -45,9 +45,9 @@ function beep(kind='bid'){
     o.type=kind==='sold'?'triangle':tick?'square':'sine';
     const startFreq=kind==='sold'?180:kind==='error'?110:tick?520:420;
     const endFreq=kind==='sold'?75:kind==='error'?80:tick?360:630;
-    o.frequency.setValueAtTime(startFreq,now);o.frequency.exponentialRampToValueAtTime(endFreq,now+(tick?.055:.11));
-    g.gain.setValueAtTime(.0001,now);g.gain.exponentialRampToValueAtTime(tick?.045:.08,now+.008);g.gain.exponentialRampToValueAtTime(.0001,now+(tick?.075:.22));
-    o.start(now);o.stop(now+(tick?.09:.24));setTimeout(()=>ctx.close(),tick?160:400);
+    o.frequency.setValueAtTime(startFreq,now);o.frequency.exponentialRampToValueAtTime(endFreq,now+(tick ? .055 : .11));
+    g.gain.setValueAtTime(.0001,now);g.gain.exponentialRampToValueAtTime(tick ? .045 : .08,now+.008);g.gain.exponentialRampToValueAtTime(.0001,now+(tick ? .075 : .22));
+    o.start(now);o.stop(now+(tick ? .09 : .24));setTimeout(()=>ctx.close(),tick?160:400);
   }catch{}
 }
 
