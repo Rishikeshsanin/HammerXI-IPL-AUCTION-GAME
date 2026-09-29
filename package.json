@@ -1,0 +1,19 @@
+{
+  "name": "hammerxi-ipl-auction-game",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "verify": "node scripts/verify.mjs && node scripts/smoke.mjs"
+  },
+  "dependencies": {
+    "trystero": "0.25.4"
+  },
+  "devDependencies": {
+    "esbuild": "0.28.2"
+  }
+}
