@@ -424,14 +424,84 @@ function handleJoin(peerId,ident){
 }
 function handleCommand(peerId,cmd){
   if(!app.game||!cmd)return;
-  const team=app.game.teams.find(t=>t.ownerPeerId===peerId);
+  const g=app.game,team=g.teams.find(t=>t.ownerPeerId===peerId);
   if(cmd.type==='setting')return applySetting(peerId,cmd);
   if(cmd.type==='start')return startAuction(peerId);
   if(cmd.type==='chat'){const text=String(cmd.text||'').trim().slice(0,70);if(text&&team){addActivity(`${team.ownerName}: ${text}`,'');broadcast()}return}
   if(cmd.type==='reaction'){if(team){addActivity(`${team.ownerName} reacted ${String(cmd.value||'').slice(0,4)}`);broadcast()}return}
-  if(app.game.phase!=='auction'||!team)return;
-  if(cmd.type==='bid')placeBid(peerId,team);else if(cmd.type==='pass')passLot(peerId,team);else if(cmd.type==='pause'&&peerId===app.game.hostPeerId)togglePause();else if(cmd.type==='force-next'&&peerId===app.game.hostPeerId){app.game.auction.highestTeamId?resolveSold():resolveUnsold(true)};
+  if(cmd.type==='open-trades'&&peerId===g.hostPeerId)return openTradeWindow();
+  if(cmd.type==='start-xi'&&peerId===g.hostPeerId)return startXiBuilder();
+  if(cmd.type==='trade-propose'&&team)return proposeTrade(team,cmd);
+  if(cmd.type==='trade-respond'&&team)return respondTrade(team,cmd);
+  if(cmd.type==='xi-toggle'&&team)return toggleXiPlayer(team,cmd.playerId);
+  if(cmd.type==='xi-auto'&&team){autoPickXi(team);broadcast();return}
+  if(cmd.type==='xi-role'&&team)return setXiRole(team,cmd.role,cmd.playerId);
+  if(cmd.type==='xi-lock'&&team)return lockXi(team);
+  if(cmd.type==='xi-autofill-all'&&peerId===g.hostPeerId)return autoFillAllXi();
+  if(cmd.type==='reveal-results'&&peerId===g.hostPeerId)return revealResults();
+  if(g.phase!=='auction'||!team)return;
+  if(cmd.type==='bid')placeBid(peerId,team);
+  else if(cmd.type==='pass')passLot(peerId,team);
+  else if(cmd.type==='pause'&&peerId===g.hostPeerId)togglePause();
+  else if(cmd.type==='force-next'&&peerId===g.hostPeerId){g.auction.highestTeamId?resolveSold():resolveUnsold(true)}
 }
+function openTradeWindow(){
+  const g=app.game;ensurePostAuction(g);g.phase='trades';addActivity('Host opened the optional trade window.','sold');app.route='trades';broadcast();
+}
+function startXiBuilder(){
+  const g=app.game;ensurePostAuction(g);g.phase='xi';addActivity('Playing XI selection is open.','sold');app.route='xi';broadcast();
+}
+function proposeTrade(team,cmd){
+  const g=app.game;if(g.phase!=='trades')return;const post=ensurePostAuction(g);
+  const to=g.teams.find(t=>t.id===cmd.toTeamId);if(!to||to.id===team.id)return sendNotice(team.ownerPeerId,'Trade blocked','Choose another franchise.');
+  const own=team.players.find(b=>b.playerId===cmd.offerPlayerId),target=to.players.find(b=>b.playerId===cmd.targetPlayerId);
+  if(!own||!target)return sendNotice(team.ownerPeerId,'Trade blocked','One of those players is no longer available.');
+  const busy=post.tradeProposals.some(x=>x.status==='pending'&&[x.offerPlayerId,x.targetPlayerId].some(id=>id===cmd.offerPlayerId||id===cmd.targetPlayerId));
+  if(busy)return sendNotice(team.ownerPeerId,'Trade blocked','One of those players is already in a pending offer.');
+  const tr={id:uid(),fromTeamId:team.id,toTeamId:to.id,offerPlayerId:cmd.offerPlayerId,targetPlayerId:cmd.targetPlayerId,status:'pending',at:Date.now()};
+  post.tradeProposals.push(tr);addActivity(\`\${team.name} sent a trade offer to \${to.name}.\`,'bid');broadcast();
+}
+function respondTrade(team,cmd){
+  const g=app.game;if(g.phase!=='trades')return;const post=ensurePostAuction(g),tr=post.tradeProposals.find(x=>x.id===cmd.tradeId&&x.status==='pending');
+  if(!tr||tr.toTeamId!==team.id)return;
+  const from=g.teams.find(t=>t.id===tr.fromTeamId),to=g.teams.find(t=>t.id===tr.toTeamId);if(!from||!to)return;
+  if(!cmd.accept){tr.status='rejected';addActivity(\`\${to.name} rejected a trade from \${from.name}.\`);broadcast();return}
+  const fi=from.players.findIndex(b=>b.playerId===tr.offerPlayerId),ti=to.players.findIndex(b=>b.playerId===tr.targetPlayerId);
+  if(fi<0||ti<0){tr.status='expired';broadcast();return}
+  const offer=from.players[fi],want=to.players[ti],offerOS=byId(offer.playerId)?.overseas?1:0,wantOS=byId(want.playerId)?.overseas?1:0;
+  const fromOS=overseasCount(from)-offerOS+wantOS,toOS=overseasCount(to)-wantOS+offerOS;
+  if(fromOS>g.settings.overseasLimit||toOS>g.settings.overseasLimit){tr.status='blocked';sendNotice(team.ownerPeerId,'Trade blocked','The swap would break an overseas squad limit.');broadcast();return}
+  from.players[fi]={...want,tradedFrom:to.id};to.players[ti]={...offer,tradedFrom:from.id};tr.status='accepted';post.tradesCompleted++;
+  post.tradeProposals.forEach(x=>{if(x.status==='pending'&&x.id!==tr.id&&[x.offerPlayerId,x.targetPlayerId].some(id=>id===tr.offerPlayerId||id===tr.targetPlayerId))x.status='expired'});
+  addActivity(\`TRADE — \${from.name} and \${to.name} complete a player swap.\`,'sold');broadcast();
+}
+function toggleXiPlayer(team,playerId){
+  const g=app.game;if(g.phase!=='xi'||team.xi?.locked)return;ensurePostAuction(g);
+  if(!team.players.some(b=>b.playerId===playerId))return;
+  const ids=team.xi.playerIds,i=ids.indexOf(playerId);
+  if(i>=0){ids.splice(i,1);if(team.xi.captainId===playerId)team.xi.captainId=null;if(team.xi.wicketkeeperId===playerId)team.xi.wicketkeeperId=null}
+  else{if(ids.length>=11)return sendNotice(team.ownerPeerId,'Playing XI full','Remove someone before adding another player.');if(byId(playerId)?.overseas&&xiSelectedOverseas(team)>=4)return sendNotice(team.ownerPeerId,'Overseas XI limit','A Playing XI can have at most 4 overseas players.');ids.push(playerId)}
+  broadcast();
+}
+function setXiRole(team,role,playerId){
+  if(app.game.phase!=='xi'||team.xi?.locked)return;const id=playerId||null;
+  if(id&&!team.xi.playerIds.includes(id))return;
+  if(role==='captain')team.xi.captainId=id;
+  if(role==='wicketkeeper'&&(!id||byId(id)?.role==='WK'))team.xi.wicketkeeperId=id;
+  broadcast();
+}
+function lockXi(team){
+  if(app.game.phase!=='xi')return;const [ok,why]=validateXi(team);if(!ok)return sendNotice(team.ownerPeerId,'XI not ready',why);
+  team.xi.locked=true;addActivity(\`\${team.name} locked its Playing XI.\`,'sold');broadcast();
+}
+function autoFillAllXi(){
+  const g=app.game;if(g.phase!=='xi')return;for(const t of g.teams){if(!t.xi?.locked){autoPickXi(t);const [ok]=validateXi(t);if(ok)t.xi.locked=true}}broadcast();
+}
+function revealResults(){
+  const g=app.game;if(g.phase!=='xi'||!g.teams.every(t=>t.xi?.locked))return;
+  g.phase='results';addActivity('Playing XIs locked. Final reveal is live.','sold');app.route='results';broadcast();
+}
+
 function command(cmd){if(!app.game||!app.network)return;if(amHost())handleCommand(app.network.selfId,cmd);else app.network.send('cmd',cmd,app.game.hostPeerId)}
 function applySetting(peerId,cmd){
   const g=app.game;if(peerId!==g.hostPeerId||g.phase!=='lobby')return;const key=cmd.key;let value=Number(cmd.value);
