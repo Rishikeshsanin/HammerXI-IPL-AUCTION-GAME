@@ -12,6 +12,7 @@ function metric(card,label){
 }
 
 function buildCeremony(layout){
+  if(layout.dataset.hof!=='1') return;
   if(layout.querySelector('.ceremony')) return;
   const teams=[...layout.querySelectorAll('.result-team')];
   if(!teams.length) return;
@@ -40,7 +41,7 @@ function buildCeremony(layout){
   const el=document.createElement('section');
   el.className='card ceremony';
   const confetti=Array.from({length:14},(_,i)=>`<i style="--i:${i}"></i>`).join('');
-  el.innerHTML=`<div class="ceremony-confetti" aria-hidden="true">${confetti}</div><div class="ceremony-copy"><div class="eyebrow">HAMMERXI AUCTION NIGHT</div><h1>AUCTION AWARDS</h1><p>The biggest moments from this auction room.</p></div><div class="ceremony-grid">${awards.map((a,i)=>`<article class="award-card" style="--delay:${i*70}ms"><span class="award-icon">${a.icon}</span><div class="award-kicker">${a.kicker}</div><strong>${safe(a.title)}</strong><span>${safe(a.sub)}</span></article>`).join('')}</div><div class="ceremony-foot">Calculated locally from the final auction results.</div>`;
+  el.innerHTML=`<div class="ceremony-confetti" aria-hidden="true">${confetti}</div><div class="ceremony-copy"><div class="eyebrow">HAMMERXI AUCTION NIGHT</div><h1>AUCTION HALL OF FAME</h1><p>The biggest moments from this auction room.</p></div><div class="ceremony-grid">${awards.map((a,i)=>`<article class="award-card" style="--delay:${i*70}ms"><span class="award-icon">${a.icon}</span><div class="award-kicker">${a.kicker}</div><strong>${safe(a.title)}</strong><span>${safe(a.sub)}</span></article>`).join('')}</div><div class="ceremony-foot">Calculated locally from the final auction results.</div>`;
   layout.prepend(el);
 }
 
