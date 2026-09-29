@@ -278,4 +278,60 @@ function buildPool(count,seed){
 function buildQueue(pool,seed){
   const marquee=shuffle([...pool].sort((a,b)=>b.rating-a.rating).slice(0,12),`${seed}-marquee`).map(p=>({playerId:p.id,setLabel:'Marquee'}));
   const rem=pool.filter(p=>!marquee.some(m=>m.playerId===p.id)); const labels={BAT:'Batters',AR:'All-Rounders',WK:'Wicketkeepers',BOWL:'Bowlers'}; const roles=['BAT','AR','WK','BOWL']; const queues=roles.map(r=>shuffle(rem.filter(p=>p.role===r),`${seed}-${r}`)); const out=[...marquee];
-  le
+  let cycle=0,added=true;while(added){added=false;for(let ri=0;ri<roles.length;ri++){const q=queues[ri];const chunk=q.splice(0,8);if(chunk.length){added=true;out.push(...chunk.map(p=>({playerId:p.id,setLabel:`${labels[roles[ri]]} · Set ${cycle+1}`})))}}cycle++}
+  return out;
+}
+function startAuction(peerId){
+  const g=app.game;if(peerId!==g.hostPeerId||g.phase!=='lobby'||g.teams.length<2)return;g.settings.overseasLimit=g.settings.squadSize>=18?7:6;g.teams.forEach(t=>{t.budget=g.settings.purse;t.players=[];t.connected=t.connected!==false});const pool=buildPool(g.teams.length,g.roomCode);const queue=buildQueue(pool,g.roomCode);
+  g.phase='auction';g.auction={queue,index:0,round:1,currentBid:byId(queue[0].playerId).basePrice,highestTeamId:null,passedTeamIds:[],deadline:Date.now()+g.settings.timerSeconds*1000,status:'live',paused:false,pauseRemaining:0,sold:[],unsold:[],resolution:null};addActivity(`Auction started with ${pool.length} players for ${g.teams.length} franchises.`,'sold');app.route='auction';broadcast();startHostClock();startTimerClock();
+}
+function placeBid(peerId,team){
+  const g=app.game,a=g.auction,p=currentPlayer(g);if(a.status!=='live'||a.paused)return sendNotice(peerId,'Bid blocked','The auction clock is paused.');const amount=nextBidAmount(a,p);const [ok,reason]=canTeamBid(team,p,amount,g);if(!ok){beep('error');return sendNotice(peerId,'Bid blocked',reason)}
+  a.currentBid=amount;a.highestTeamId=team.id;const reset=Math.max(5000,Math.round(g.settings.timerSeconds*.65)*1000);a.deadline=Date.now()+reset;addActivity(`${team.name} bids ${fmtPrice(amount)} for ${p.name}.`,'bid');beep('bid');broadcast();checkEarlyHammer();
+}
+function passLot(peerId,team){
+  const g=app.game,a=g.auction,p=currentPlayer(g);if(a.status!=='live'||a.paused||a.passedTeamIds.includes(team.id)||a.highestTeamId===team.id)return;a.passedTeamIds.push(team.id);addActivity(`${team.name} passes on ${p.name}.`);broadcast();checkEarlyHammer();
+}
+function potentialTeam(t,p){if(t.connected===false||t.players.length>=app.game.settings.squadSize)return false;if(p.overseas&&overseasCount(t)>=app.game.settings.overseasLimit)return false;const amount=nextBidAmount(app.game.auction,p);return amount<=maxAllowedBid(t,app.game.settings)+.0001}
+function checkEarlyHammer(){
+  const g=app.game,a=g.auction,p=currentPlayer(g);if(!p||a.status!=='live')return;const eligible=g.teams.filter(t=>potentialTeam(t,p));const active=eligible.filter(t=>t.id!==a.highestTeamId&&!a.passedTeamIds.includes(t.id));
+  if(a.highestTeamId&&active.length===0)resolveSold();else if(!a.highestTeamId&&eligible.length>0&&eligible.every(t=>a.passedTeamIds.includes(t.id)))resolveUnsold();else if(!eligible.length)resolveUnsold();
+}
+function resolveSold(){
+  const g=app.game,a=g.auction;if(a.status!=='live'||!a.highestTeamId)return;const p=currentPlayer(g),t=g.teams.find(x=>x.id===a.highestTeamId);t.budget=round2(t.budget-a.currentBid);t.players.push({playerId:p.id,price:a.currentBid});a.sold.push({playerId:p.id,teamId:t.id,price:a.currentBid});a.status='sold';a.resolution={teamId:t.id,price:a.currentBid};addActivity(`SOLD — ${p.name} to ${t.name} for ${fmtPrice(a.currentBid)}.`,'sold');beep('sold');broadcast();scheduleAdvance();
+}
+function resolveUnsold(forced=false){
+  const g=app.game,a=g.auction;if(a.status!=='live')return;const p=currentPlayer(g);if(a.round===1&&!a.unsold.includes(p.id))a.unsold.push(p.id);a.status='unsold';a.resolution={forced};addActivity(`${p.name} is unsold${forced?' (host skip)':''}.`);broadcast();scheduleAdvance();
+}
+function scheduleAdvance(){clearTimeout(app.advanceTimer);if(!amHost())return;app.advanceTimer=setTimeout(()=>{app.advanceTimer=null;advancePlayer()},1700)}
+function advancePlayer(){
+  const g=app.game,a=g.auction;if(!amHost()||g.phase!=='auction')return;if(g.teams.every(t=>t.connected===false||t.players.length>=g.settings.squadSize)){finishAuction();return}
+  a.index++;
+  if(a.index>=a.queue.length){
+    if(a.round===1&&a.unsold.length&&g.teams.some(t=>t.connected!==false&&t.players.length<g.settings.squadSize)){
+      const recall=shuffle(a.unsold,g.roomCode+'-recall').map(id=>({playerId:id,setLabel:'Accelerated Recall'}));a.queue=recall;a.index=0;a.round=2;a.unsold=[];addActivity(`Accelerated recall begins with ${recall.length} unsold players.`,'sold');
+    }else {finishAuction();return}
+  }
+  const p=currentPlayer(g);a.currentBid=p.basePrice;a.highestTeamId=null;a.passedTeamIds=[];a.deadline=Date.now()+g.settings.timerSeconds*1000;a.status='live';a.paused=false;a.pauseRemaining=0;a.resolution=null;broadcast();checkEarlyHammer();
+}
+function finishAuction(){const g=app.game;g.phase='results';addActivity('Auction complete. Squads are locked.','sold');app.route='results';broadcast();clearInterval(app.hostClock)}
+function togglePause(){const g=app.game,a=g.auction;if(a.status!=='live')return;if(!a.paused){a.pauseRemaining=Math.max(0,a.deadline-Date.now());a.paused=true;addActivity('Host paused the auction.')}else{a.deadline=Date.now()+Math.max(2500,a.pauseRemaining);a.paused=false;addActivity('Auction resumed.')}broadcast()}
+function startHostClock(){clearInterval(app.hostClock);if(!amHost()||app.game?.phase!=='auction')return;app.hostClock=setInterval(()=>{const a=app.game?.auction;if(!a)return;if((a.status==='sold'||a.status==='unsold')&&!app.advanceTimer)scheduleAdvance();if(a.status==='live'&&!a.paused&&Date.now()>=a.deadline){a.highestTeamId?resolveSold():resolveUnsold()}},180)}
+function startTimerClock(){if(app.timerClock)return;app.timerClock=setInterval(updateTimerDom,120)}
+function updateTimerDom(){
+  const el=$('#timer'),txt=$('#timer-text'),g=app.game;if(!el||!txt||g?.phase!=='auction')return;const a=g.auction;if(a.paused){txt.textContent='Ⅱ';el.style.setProperty('--pct','100');return}const total=g.settings.timerSeconds*1000;const left=Math.max(0,a.deadline-Date.now());const sec=Math.ceil(left/1000);const pct=clamp((left/total)*100,0,100);txt.textContent=String(sec);el.style.setProperty('--pct',String(pct));el.classList.toggle('danger',sec<=3&&a.status==='live')
+}
+
+function drawStory(team){
+  const g=app.game,c=document.createElement('canvas');c.width=1080;c.height=1920;const x=c.getContext('2d'),[a,b]=colorsForTeam(team);const grad=x.createLinearGradient(0,0,1080,1920);grad.addColorStop(0,'#07120d');grad.addColorStop(.58,'#0c1812');grad.addColorStop(1,'#050907');x.fillStyle=grad;x.fillRect(0,0,1080,1920);
+  const glow=x.createRadialGradient(850,220,20,850,220,700);glow.addColorStop(0,a+'99');glow.addColorStop(1,'#00000000');x.fillStyle=glow;x.fillRect(0,0,1080,1000);
+  x.fillStyle='#f2c94c';x.font='700 28px Segoe UI, Arial, sans-serif';x.fillText('HAMMERXI  /  FRANCHISE AUCTION',72,95);x.fillStyle='#707b8b';x.font='500 21px Segoe UI, Arial, sans-serif';x.fillText(`ROOM ${g.roomCode} · SQUAD LOCKED`,72,137);
+  x.fillStyle='#ffffff';x.font='800 72px Segoe UI, Arial, sans-serif';wrapText(x,team.name,72,300,900,82,2);x.fillStyle='#9aa89f';x.font='500 28px Segoe UI, Arial, sans-serif';x.fillText(`Owned by ${team.ownerName}`,72,460);
+  // crest
+  x.save();x.translate(810,260);x.fillStyle=a;x.beginPath();x.moveTo(110,0);x.lineTo(210,40);x.lineTo(200,170);x.lineTo(110,235);x.lineTo(20,170);x.lineTo(10,40);x.closePath();x.fill();x.fillStyle='#fff';x.font='800 58px Segoe UI, Arial, sans-serif';x.textAlign='center';x.fillText(team.mark||initials(team.name),110,135);x.restore();x.textAlign='left';
+  const spent=round2(g.settings.purse-team.budget);statBox(x,72,550,'SPENT',fmtPrice(spent));statBox(x,382,550,'PURSE LEFT',fmtPrice(team.budget));statBox(x,692,550,'OVERSEAS',`${overseasCount(team)} / ${g.settings.overseasLimit}`);
+  x.fillStyle='#ffffff';x.font='700 29px Segoe UI, Arial, sans-serif';x.fillText('THE SQUAD',72,770);const players=[...team.players].sort((u,v)=>v.price-u.price);let y=835;players.slice(0,18).forEach((buy,i)=>{const p=byId(buy.playerId);x.fillStyle=i%2?'#0b1017':'#111720';roundRect(x,72,y-36,936,64,14,true);x.fillStyle='#ffffff';x.font='600 23px Segoe UI, Arial, sans-serif';x.fillText(`${String(i+1).padStart(2,'0')}  ${p.name}`,94,y);x.fillStyle='#9aa89f';x.font='500 19px Segoe UI, Arial, sans-serif';x.fillText(`${ROLE_LABEL[p.role]}${p.overseas?' · OS':''}`,620,y);x.fillStyle='#f2c94c';x.textAlign='right';x.font='700 21px Segoe UI, Arial, sans-serif';x.fillText(fmtPrice(buy.price),980,y);x.textAlign='left';y+=72});
+  x.fillStyle='#5f6a79';x.font='500 18px Segoe UI, Arial, sans-serif';x.fillText('No signup. No saved history. Just auction night.',72,1810);x.fillStyle='#ffffff';x.font='800 33px Segoe UI, Arial, sans-serif';x.fillText(location.host || 'HammerXI',72,1860);
+  c.toBlob(blob=>{const url=URL.createObjectURL(blob),ael=document.createElement('a');ael.href=url;ael.download=`hammerxi-${team.name.toLowerCase().replace(/[^a-z0-9]+/g,'-')}-story.png`;ael.click();setTimeout(()=>URL.revokeObjectURL(url),1500)},'image/png');
+}
+function statBox(x,left,top,label,value){x.fillStyle='#0d131c';roundRect(x,left,top,286,135,18,true);x.fillStyle='#7
