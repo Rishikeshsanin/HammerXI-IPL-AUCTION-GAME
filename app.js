@@ -137,9 +137,8 @@ function currentLot(g=app.game){return g?.auction?.queue?.[g.auction.index]}
 function currentPlayer(g=app.game){const l=currentLot(g);return l?byId(l.playerId):null}
 const PHOTO_ALIASES={
   'N. Tilak Varma':'Tilak Varma',
-  'Mohd. Arshad Khan':'Arshad Khan cricketer',
-  'M. Siddharth':'Manimaran Siddharth',
-  'R.S Ambrish':'RS Ambrish cricketer'
+  'Mohd. Arshad Khan':'Arshad Khan (cricketer)',
+  'M. Siddharth':'Manimaran Siddharth'
 };
 function playerPhotoQuery(p){return PHOTO_ALIASES[p.name]||p.name}
 async function fetchPlayerPhoto(p){
@@ -147,18 +146,29 @@ async function fetchPlayerPhoto(p){
   if(app.photoInflight.has(p.id))return app.photoInflight.get(p.id);
   const task=(async()=>{
     try{
+      const expected=playerPhotoQuery(p);
       const q=new URLSearchParams({
-        action:'query',generator:'search',gsrsearch:`${playerPhotoQuery(p)} cricketer`,gsrnamespace:'0',gsrlimit:'4',
-        prop:'pageimages|info',piprop:'thumbnail',pithumbsize:'900',pilicense:'free',inprop:'url',format:'json',origin:'*'
+        action:'query',
+        titles:expected,
+        redirects:'1',
+        prop:'pageimages|info',
+        piprop:'thumbnail',
+        pithumbsize:'900',
+        pilicense:'free',
+        inprop:'url',
+        format:'json',
+        origin:'*'
       });
       const res=await fetch(`https://en.wikipedia.org/w/api.php?${q}`,{credentials:'omit',referrerPolicy:'no-referrer'});
       if(!res.ok)throw new Error(`Wikipedia photo lookup failed: ${res.status}`);
       const json=await res.json();
-      const pages=Object.values(json?.query?.pages||{}).filter(x=>x?.thumbnail?.source);
-      const exact=pages.find(x=>x.title?.toLowerCase()===playerPhotoQuery(p).toLowerCase());
-      const cricket=pages.find(x=>/cricket/i.test(x.title||''));
-      const page=exact||cricket||pages[0];
-      const photo=page?{src:String(page.thumbnail.source).replace(/^http:/,'https:'),sourceUrl:page.fullurl||'https://en.wikipedia.org/'}:null;
+      const page=Object.values(json?.query?.pages||{})[0];
+      const valid=page && !('missing' in page) && page.thumbnail?.source;
+      const photo=valid?{
+        src:String(page.thumbnail.source).replace(/^http:/,'https:'),
+        sourceUrl:page.fullurl||'https://en.wikipedia.org/',
+        title:page.title||expected
+      }:null;
       app.photoCache.set(p.id,photo);return photo;
     }catch{
       app.photoCache.set(p.id,null);return null;
