@@ -25,3 +25,5 @@ jobs:
         run: node --check data.js
       - name: Verify auction catalogue and pool rules
         run: node scripts/verify.mjs
+      - name: Smoke-test browser startup
+        run: node scripts/smoke.mjs
