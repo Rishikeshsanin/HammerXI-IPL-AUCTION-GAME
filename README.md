@@ -1,4 +1,4 @@
-# HammerXI V2
+# HammerXI V2.1
 
 A private, browser-to-browser cricket auction game for 2–10 friends.
 
@@ -68,3 +68,17 @@ The lobby's **Copy invite link** button copies a full HammerXI URL containing th
 Live auctions include normal increment bidding plus **+₹50L** and **+₹1 Cr** quick-bid controls. Quick bids still pass through all normal purse, squad, overseas and PASS-state validation.
 
 The host also has a conservative **Previous player** control. It is available only on a fresh current lot before any accepted bid. If the previous player was sold, HammerXI refunds the winning franchise, removes the purchase and reopens that player cleanly.
+
+
+## V2.1 — Private Squad Intelligence
+
+V2.1 upgrades the live auction owner's **MY SQUAD** area without exposing strategy to the room:
+
+- Players are grouped into Wicketkeepers, Batters, All-Rounders and Bowlers.
+- Each row shows player name, overseas status and auction price without cluttering the panel with ratings.
+- The latest purchase receives a short arrival highlight while the SOLD result is on screen.
+- **LIVE SQUAD NEEDS** is rendered only for the local franchise owner and is never shown on the public Broadcast screen.
+- Private guidance includes role deficits, remaining squad slots, remaining overseas capacity and the ₹30L-per-open-slot completion floor.
+- The panel is collapsible and remains available on mobile even though the full left auction sidebar is hidden there.
+
+The role targets are HammerXI balance guidance, not mandatory auction rules. Core purse protection and squad restrictions remain unchanged.

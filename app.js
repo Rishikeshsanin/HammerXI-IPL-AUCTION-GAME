@@ -23,6 +23,7 @@ const app = {
   hostClock:null, timerClock:null, advanceTimer:null, joinRetryTimer:null, hostMigrationTimer:null,
   photoCache:new Map(), photoInflight:new Map(),
   broadcastMode:false, lastTensionSecond:null, lastTensionLot:null,
+  squadPanelOpen:!(typeof window!=='undefined'&&window.matchMedia?.('(max-width:760px)')?.matches),
   clockOffsetMs:0, lastHostSyncAt:0, lastClockBroadcastAt:0
 };
 
@@ -128,7 +129,7 @@ function beep(kind='bid'){
 function header(){
   const status= app.networkStatus==='online' ? ['Live P2P',''] : app.networkStatus==='local' ? ['Local fallback','warn'] : ['No room','off'];
   return `<header class="topbar">
-    <button class="brand" data-action="home" style="background:none;border:0;color:inherit;padding:0"><span class="brand-mark"><span>H</span></span>HAMMER<span style="color:var(--accent)">XI</span><small class="version-mark">V2</small></button>
+    <button class="brand" data-action="home" style="background:none;border:0;color:inherit;padding:0"><span class="brand-mark"><span>H</span></span>HAMMER<span style="color:var(--accent)">XI</span><small class="version-mark">V2.1</small></button>
     <div class="top-actions">
       <span class="privacy-pill"><span class="dot"></span>No accounts · no permanent storage</span>
       <span class="status-pill"><span class="dot ${status[1]}"></span>${status[0]}</span>
@@ -291,6 +292,65 @@ function biddingWarLabel(g){
   return `<div class="war-banner"><span class="war-flame">🔥</span><div><strong>BIDDING WAR</strong><span>${teams.map(t=>esc(t.name)).join(' <i>VS</i> ')} · ${w.bidCount} bids</span></div></div>`;
 }
 
+const SQUAD_ROLE_ORDER=['WK','BAT','AR','BOWL'];
+const SQUAD_ROLE_SHORT={WK:'WK',BAT:'BAT',AR:'AR',BOWL:'BOWL'};
+function squadRoleCounts(team){
+  const counts={WK:0,BAT:0,AR:0,BOWL:0};
+  for(const buy of team?.players||[]){const role=byId(buy.playerId)?.role;if(role in counts)counts[role]++}
+  return counts;
+}
+function squadRoleTargets(settings){
+  const n=Number(settings?.squadSize||18);
+  return {
+    WK:n>=16?2:1,
+    BAT:Math.max(3,Math.ceil(n*.22)),
+    AR:Math.max(2,Math.ceil(n*.15)),
+    BOWL:Math.max(4,Math.ceil(n*.30))
+  };
+}
+function squadNeeds(team,g){
+  if(!team||!g)return {counts:{WK:0,BAT:0,AR:0,BOWL:0},targets:{WK:0,BAT:0,AR:0,BOWL:0},needs:[],remainingSlots:0,minCompletionPurse:0,purseHeadroom:0,overseasRemaining:0};
+  const counts=squadRoleCounts(team),targets=squadRoleTargets(g.settings),priority={WK:0,BOWL:1,AR:2,BAT:3};
+  const needs=SQUAD_ROLE_ORDER.map(role=>({role,count:counts[role],target:targets[role],missing:Math.max(0,targets[role]-counts[role])}))
+    .filter(x=>x.missing>0).sort((a,b)=>priority[a.role]-priority[b.role]||b.missing-a.missing);
+  const remainingSlots=Math.max(0,g.settings.squadSize-team.players.length);
+  const minCompletionPurse=round2(remainingSlots*.3);
+  return {
+    counts,targets,needs,remainingSlots,minCompletionPurse,
+    purseHeadroom:round2(Math.max(0,team.budget-minCompletionPurse)),
+    overseasRemaining:Math.max(0,g.settings.overseasLimit-overseasCount(team))
+  };
+}
+function renderPrivateSquadPanel(team,g){
+  if(!team)return '';
+  const intel=squadNeeds(team,g),current=currentPlayer(g);
+  const justBought=g.auction?.status==='sold'&&g.auction?.resolution?.teamId===team.id?current?.id:null;
+  const roleGroups=SQUAD_ROLE_ORDER.map(role=>{
+    const buys=(team.players||[]).filter(b=>byId(b.playerId)?.role===role);
+    const rows=buys.map(b=>{
+      const p=byId(b.playerId);if(!p)return '';
+      return `<div class="squad-player-row ${p.id===justBought?'new-buy':''}"><div class="squad-player-copy"><strong>${esc(p.name)}</strong><span>${p.overseas?'<b class="os-badge">OS</b>':''}${esc(ROLE_LABEL[p.role]||p.role)}</span></div><div class="squad-player-price">${fmtPrice(b.price)}</div></div>`;
+    }).join('');
+    return `<section class="squad-role-group"><div class="squad-role-head"><span>${SQUAD_ROLE_SHORT[role]}</span><b>${buys.length}</b><small>target ${intel.targets[role]}</small></div>${rows||'<div class="squad-role-empty">No players yet</div>'}</section>`;
+  }).join('');
+  const needs=intel.needs.length
+    ?intel.needs.map(n=>`<span class="need-chip ${n.role==='WK'?'urgent':''}">+${n.missing} ${SQUAD_ROLE_SHORT[n.role]}</span>`).join('')
+    :'<span class="need-chip covered">Core role balance covered ✓</span>';
+  return `<details class="my-squad-panel" ${app.squadPanelOpen?'open':''}>
+    <summary class="my-squad-summary"><div><span class="section-label">MY SQUAD</span><strong>${team.players.length}/${g.settings.squadSize}</strong></div><div class="squad-summary-right"><span>${fmtPrice(team.budget)}</span><small>${overseasCount(team)}/${g.settings.overseasLimit} OS</small></div></summary>
+    <div class="my-squad-body">
+      <div class="squad-role-strip">${SQUAD_ROLE_ORDER.map(r=>`<span><b>${SQUAD_ROLE_SHORT[r]}</b> ${intel.counts[r]}</span>`).join('')}</div>
+      <div class="my-squad-list">${roleGroups}</div>
+      <section class="private-squad-intel" data-private-team="${esc(team.id)}">
+        <div class="private-intel-head"><div><span class="private-dot"></span>PRIVATE · LIVE SQUAD NEEDS</div><b>ONLY YOU</b></div>
+        <div class="need-chips">${needs}</div>
+        <div class="private-intel-grid"><div><span>Slots left</span><strong>${intel.remainingSlots}</strong></div><div><span>OS room</span><strong>${intel.overseasRemaining}</strong></div><div><span>Completion floor</span><strong>${fmtPrice(intel.minCompletionPurse)}</strong></div></div>
+        <p>HammerXI balance guidance only. The completion floor keeps ₹30L available for every remaining mandatory squad slot.</p>
+      </section>
+    </div>
+  </details>`;
+}
+
 function renderScoreTeam(t,me,g){const passed=g.auction.passedTeamIds.includes(t.id);return `<div class="score-team ${t.id===me?.id?'me':''} ${g.auction.highestTeamId===t.id?'leading':''} ${passed?'passed':''}">${crest(t,'sm')}<div class="meta"><strong>${esc(t.name)}</strong><span>${t.players.length}/${g.settings.squadSize} · ${overseasCount(t)}/${g.settings.overseasLimit} OS</span></div><div class="team-auction-state">${passed?'<span class="pass-state">PASS</span>':''}<div class="money">${fmtPrice(t.budget)}</div></div></div>`}
 function renderAuction(){
   const g=app.game,p=currentPlayer(g),lot=currentLot(g),me=getMyTeam();if(!p||!lot)return renderLobby();
@@ -298,17 +358,17 @@ function renderAuction(){
   const quick50=requestedBidAmount(a,p,.5),quick100=requestedBidAmount(a,p,1),[can50]=canTeamBid(me,p,quick50,g),[can100]=canTeamBid(me,p,quick100,g);
   const passed=a.passedTeamIds.includes(me?.id);
   const teams=g.teams.map(t=>renderScoreTeam(t,me,g)).join('');
-  const mine=me?.players.slice().reverse().map(x=>`<div class="squad-mini"><strong>${esc(byId(x.playerId)?.name||'Player')}</strong><span>${fmtPrice(x.price)}</span></div>`).join('')||'';
+  const privateSquad=renderPrivateSquadPanel(me,g);
   const feed=g.activity.slice(-26).reverse().map(e=>`<div class="feed-item ${e.kind||''}">${esc(e.text)}</div>`).join('');
   const role=ROLE_LABEL[p.role]; const pct=100; const war=biddingWarLabel(g);
-  return `${header()}${war}<main class="auction-shell"><aside class="auction-col left card auction-side"><div class="row-between"><div class="section-label">Franchise board</div><span class="mini-pill">${g.teams.length}</span></div>${teams}<div style="height:12px"></div><div class="section-label">My squad</div><div class="my-squad">${mine||'<div class="empty" style="padding:14px;font-size:11px">No buys yet.</div>'}</div></aside>
+  return `${header()}${war}<main class="auction-shell"><aside class="auction-col left card auction-side"><div class="row-between"><div class="section-label">Franchise board</div><span class="mini-pill">${g.teams.length}</span></div>${teams}<div style="height:12px"></div><div class="desktop-private-squad">${privateSquad}</div></aside>
   <section class="auction-col card auction-main"><div class="auction-stage">${a.paused?'<div class="paused-banner">Auction paused by host</div>':''}<div class="stage-top"><div><div class="live-dot">LIVE AUCTION FLOOR</div><div class="lot-tag" style="margin-top:7px">${esc(lot.setLabel)} · LOT ${a.index+1}/${a.queue.length}${a.round===2?' · RECALL':''}</div></div><div class="timer" id="timer" style="--pct:${pct}"><span id="timer-text">${g.settings.timerSeconds}</span></div></div>
   <div class="player-stage"><div class="player-visual">${photoMarkup(p)}<span class="origin-tag">${p.originalTeam} · ${p.overseas?'OVERSEAS':'INDIA'}</span><div class="player-initials">${initials(p.name)}</div><div class="player-visual-meta"><div class="role">${role}</div><div class="tiny muted" style="margin-top:4px">Game reserve ${fmtPrice(p.basePrice)}</div></div></div>
   <div class="player-copy"><div class="player-tags"><span class="tag">${role}</span><span class="tag">${p.overseas?'Overseas':'Indian'}</span><span class="tag">Rating ${p.rating}</span></div><h1>${esc(p.name)}</h1><div class="bid-block"><div class="bid-caption">${lead?'Current bid':'Reserve price'}</div><div class="big-price">${fmtPrice(a.currentBid)}</div><div class="leader-name">${lead?`Highest: <strong>${esc(lead.name)}</strong>`:'Waiting for the opening bid'}</div>
   <div class="bid-actions"><button class="bid-btn" data-action="bid" ${!can||a.status!=='live'?'disabled':''}>${lead?`BID ${fmtPrice(next)}`:`OPEN AT ${fmtPrice(next)}`}</button><button class="pass-btn ${passed?'undo':''}" data-action="pass" ${a.status!=='live'||a.paused||a.highestTeamId===me?.id?'disabled':''}>${passed?'UNDO PASS':'PASS'}</button></div><div class="quick-bids"><button class="quick-bid" data-action="quick-bid" data-raise="0.5" ${!can50||a.status!=='live'||a.paused?'disabled':''}>+ ₹50L</button><button class="quick-bid" data-action="quick-bid" data-raise="1" ${!can100||a.status!=='live'||a.paused?'disabled':''}>+ ₹1 Cr</button></div><div class="reason">${passed?'Passed for this player — UNDO PASS stays available until the hammer falls.':can?`Next increment: ${fmtPrice(incrementFor(a.currentBid))} · Max safe bid ${fmtPrice(maxAllowedBid(me,g.settings))}`:esc(reason)}</div></div></div></div>
   ${a.status==='sold'?`<div class="sold-overlay"><div class="sold-rays"></div><div class="gavel-swing">🔨</div><div class="hammer-card">${a.resolution?.war?'<div class="sold-war">🔥 BIDDING WAR WON</div>':''}<div class="hammer-word">SOLD</div><div class="sold-player">${esc(p.name)}</div><div class="sold-to">${crest(g.teams.find(t=>t.id===a.resolution.teamId),'sm')}<span>TO <strong>${esc(g.teams.find(t=>t.id===a.resolution.teamId)?.name||'')}</strong></span></div><div class="hammer-price">${fmtPrice(a.resolution.price)}</div></div></div>`:''}
   ${a.status==='unsold'?`<div class="sold-overlay"><div class="hammer-card"><div class="hammer-word unsold">UNSOLD</div><div class="hammer-sub">${esc(p.name)} goes to ${a.round===1?'the recall list':'the archives'}</div></div></div>`:''}
-  </div><div class="auction-mobile-stats"><div class="metric"><span>Purse</span><strong>${fmtPrice(me?.budget||0)}</strong></div><div class="metric"><span>Squad</span><strong>${me?.players.length||0}/${g.settings.squadSize}</strong></div><div class="metric"><span>Overseas</span><strong>${overseasCount(me||{players:[]})}/${g.settings.overseasLimit}</strong></div></div></section>
+  </div><div class="auction-mobile-stats"><div class="metric"><span>Purse</span><strong>${fmtPrice(me?.budget||0)}</strong></div><div class="metric"><span>Squad</span><strong>${me?.players.length||0}/${g.settings.squadSize}</strong></div><div class="metric"><span>Overseas</span><strong>${overseasCount(me||{players:[]})}/${g.settings.overseasLimit}</strong></div></div><div class="mobile-private-squad">${privateSquad}</div></section>
   <aside class="auction-col right card auction-side"><div class="section-label">Room activity</div><div class="feed" id="feed">${feed||'<div class="feed-item">Auction activity will appear here.</div>'}</div><div class="chat-box"><input class="input" id="chat-input" maxlength="70" placeholder="Auction chat… keep it clean"><button class="icon-btn" data-action="send-chat">↗</button></div><div class="reactions"><button class="reaction" data-action="reaction" data-value="🔥">🔥</button><button class="reaction" data-action="reaction" data-value="😂">😂</button><button class="reaction" data-action="reaction" data-value="💀">💀</button><button class="reaction" data-action="reaction" data-value="👏">👏</button></div><div style="height:18px"></div><div class="section-label">Auction control</div>${amHost()?`<div class="host-auction-controls"><button class="btn small secondary" data-action="pause">${a.paused?'▶ Continue auction':'⏸ Pause auction'}</button><button class="btn small ghost" data-action="previous-lot" ${canReversePreviousLot(g)?'':'disabled'}>↶ Previous player</button><button class="btn small ghost" data-action="force-next">Skip lot</button></div>`:`<div class="small-copy muted">Host controls the hammer and auction flow.</div>`}<button class="btn small broadcast-toggle" data-action="toggle-broadcast" style="width:100%;margin-top:7px">🏟️ Broadcast screen</button><div class="summary-block"><span>Pool</span><strong>${a.queue.length} lots</strong></div><div class="summary-block"><span>Sold</span><strong>${a.sold.length}</strong></div><div class="summary-block"><span>Recall</span><strong>${a.round===2?'Active':`${a.unsold.length} waiting`}</strong></div></aside></main>`;
 }
 
@@ -805,6 +865,7 @@ async function leaveRoom(){await closeNetwork();app.game=null;app.identity=null;
 
 // UI events
 document.addEventListener('input',e=>{const k=e.target?.dataset?.draft;if(k){let v=e.target.value;if(['maxTeams','squadSize','purse','timerSeconds'].includes(k))v=Number(v);app.draft[k]=v}});
+document.addEventListener('toggle',e=>{if(e.target?.classList?.contains?.('my-squad-panel'))app.squadPanelOpen=!!e.target.open},true);
 document.addEventListener('change',e=>{const k=e.target?.dataset?.draft;if(k){let v=e.target.value;if(['maxTeams','squadSize','purse','timerSeconds'].includes(k))v=Number(v);app.draft[k]=v;if(app.route==='create'&&['maxTeams','squadSize','purse','timerSeconds'].includes(k))render()}const s=e.target?.dataset?.setting;if(s)command({type:'setting',key:s,value:Number(e.target.value)});if(e.target?.id==='xi-captain')command({type:'xi-role',role:'captain',playerId:e.target.value||null});if(e.target?.id==='xi-keeper')command({type:'xi-role',role:'wicketkeeper',playerId:e.target.value||null})});
 document.addEventListener('submit',e=>{if(e.target.id==='create-form'){e.preventDefault();createRoom()}if(e.target.id==='join-form'){e.preventDefault();joinRoom()}});
 document.addEventListener('click',e=>{

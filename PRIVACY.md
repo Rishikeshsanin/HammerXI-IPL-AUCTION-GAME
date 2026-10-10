@@ -16,3 +16,7 @@ Like any WebRTC application, network/signalling infrastructure can process ordin
 
 ## Player photographs
 When a player comes up for auction, HammerXI may request a free-license article thumbnail from the public English Wikipedia/MediaWiki API. No HammerXI account or profile data is sent with that request. The browser makes the request directly and HammerXI keeps the resolved image URL only in memory for the current page session. If no suitable image is available, the auction card falls back to the player's initials.
+
+
+## Private squad intelligence
+HammerXI V2.1 derives the **Live Squad Needs** display in the browser from the current owner's already-synchronized squad state. The derived recommendations are not added to room state and are not rendered on other owners' auction screens or on Broadcast Mode. No squad-intelligence profile or history is stored after the room ends.
