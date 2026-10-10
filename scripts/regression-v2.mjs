@@ -53,7 +53,7 @@ const factory = new Function(
     renderAuction, renderPostAuction, renderTradeWindow, renderXiBuilder, renderResults, renderBroadcastAuction, drawNewspaper,
     squadRoleCounts, squadRoleTargets, squadNeeds, renderPrivateSquadPanel,
     applySetting, handleCommand, handleJoin, receiveNetwork, onPeerJoin, onPeerLeave, inviteUrl, applyInviteDeepLink,
-    startJoinRetry, clearJoinRetry, syncHostClock, networkNow
+    startJoinRetry, clearJoinRetry, syncHostClock, networkNow, safeSharedPhoto, shareCurrentPlayerPhoto, safeSharedPhoto, shareCurrentPlayerPhoto
   };`
 );
 
@@ -93,6 +93,19 @@ await new Promise(r=>setTimeout(r,2500));
 clearJoinRetry();app.pendingJoin=false;
 ok(sent.filter(x=>x.type==='join').length>=2,'Join flow must retry when ACK/discovery packets are missed');
 sent.length=0;
+
+// Player photo sync must accept only the current host and reject spoofed/non-Wikimedia URLs.
+const photoPlayer=PLAYERS[0],goodPhoto={src:'https://upload.wikimedia.org/example/player.jpg',sourceUrl:'https://en.wikipedia.org/wiki/Player',title:'Player'};
+app.game={version:2,roomCode:'PHOTO1',hostPeerId:'host',phase:'auction',settings:{maxTeams:2,squadSize:18,purse:125,timerSeconds:12,overseasLimit:7,hallOfFame:false},teams:[],activity:[],auction:{queue:[{playerId:photoPlayer.id,setLabel:'QA'}],index:0,round:1,currentBid:photoPlayer.basePrice,highestTeamId:null,passedTeamIds:[],deadline:Date.now()+12000,status:'live',paused:false,pauseRemaining:0,sold:[],unsold:[],resolution:null,bidHistory:[],war:null}};
+app.network.selfId='guest';
+app.photoCache.delete(photoPlayer.id);
+receiveNetwork({type:'photo',payload:{playerId:photoPlayer.id,photo:goodPhoto}},'host');
+eq(app.photoCache.get(photoPlayer.id)?.src,goodPhoto.src,'Current host photo metadata must be cached');
+app.photoCache.delete(photoPlayer.id);
+receiveNetwork({type:'photo',payload:{playerId:photoPlayer.id,photo:goodPhoto}},'evil-peer');
+ok(!app.photoCache.has(photoPlayer.id),'Non-host photo metadata must be ignored');
+ok(safeSharedPhoto({src:'https://evil.example/player.jpg'})===null,'Non-Wikimedia photo URLs must be rejected');
+app.network.selfId='host';
 
 // Direct invite links must carry the room code and open the prefilled join flow.
 const direct=inviteUrl('ABC234');
