@@ -223,3 +223,74 @@ body:before{content:"";position:fixed;inset:0;pointer-events:none;z-index:-1;bac
   .host-auction-controls{grid-template-columns:1fr}
   .host-auction-controls .btn:last-child{grid-column:auto}
 }
+
+
+/* =========================================================
+   HAMMERXI V2.1 — private squad intelligence
+   ========================================================= */
+.desktop-private-squad{display:block}
+.mobile-private-squad{display:none}
+.my-squad-panel{border:1px solid #2c4134;background:#07110c;border-radius:9px;overflow:hidden}
+.my-squad-panel>summary{list-style:none}
+.my-squad-panel>summary::-webkit-details-marker{display:none}
+.my-squad-summary{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:12px 12px 11px;cursor:pointer;background:linear-gradient(180deg,#0d1a12,#0a1510);border-bottom:1px solid transparent;user-select:none}
+.my-squad-panel[open]>.my-squad-summary{border-bottom-color:#263b2f}
+.my-squad-summary:after{content:"⌄";color:#75877b;font-size:12px;transition:transform .16s ease}
+.my-squad-panel[open]>.my-squad-summary:after{transform:rotate(180deg)}
+.my-squad-summary>div:first-child{display:flex;align-items:center;gap:8px;min-width:0}
+.my-squad-summary .section-label{margin:0;color:#8ea095;white-space:nowrap}
+.my-squad-summary>div:first-child>strong{display:inline-flex;align-items:center;justify-content:center;min-width:32px;height:24px;padding:0 6px;border:1px solid #405243;background:#0d1912;color:#f2c94c;border-radius:5px;font-size:10px}
+.squad-summary-right{margin-left:auto;text-align:right;display:flex;flex-direction:column;align-items:flex-end}
+.squad-summary-right>span{color:#f2c94c;font-size:11px;font-weight:900}
+.squad-summary-right>small{margin-top:2px;color:#718278;font-size:8px;letter-spacing:.06em}
+.my-squad-body{padding:10px}
+.squad-role-strip{display:grid;grid-template-columns:repeat(4,1fr);gap:5px;margin-bottom:9px}
+.squad-role-strip span{padding:6px 4px;border:1px solid #263a2e;background:#09140e;border-radius:5px;text-align:center;color:#83958a;font-size:8px}
+.squad-role-strip b{color:#cbdc7c;font-size:8px}
+.my-squad-list{display:grid;gap:8px;max-height:300px;overflow:auto;padding-right:2px;scrollbar-width:thin}
+.squad-role-group{border:1px solid #25382d;background:#08130d;border-radius:7px;overflow:hidden}
+.squad-role-head{display:grid;grid-template-columns:auto auto 1fr;align-items:center;gap:7px;padding:6px 8px;border-bottom:1px solid #22352a;background:#0a1710}
+.squad-role-head>span{color:#f2c94c;font-size:8px;font-weight:900;letter-spacing:.1em}
+.squad-role-head>b{display:grid;place-items:center;width:18px;height:18px;border:1px solid #394d3f;border-radius:4px;color:#e8ece9;font-size:8px}
+.squad-role-head>small{justify-self:end;color:#66796d;font-size:7px;text-transform:uppercase;letter-spacing:.06em}
+.squad-player-row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;align-items:center;padding:8px;border-bottom:1px solid #1d2e25}
+.squad-player-row:last-child{border-bottom:0}
+.squad-player-copy{min-width:0}
+.squad-player-copy>strong{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:#eef1ed;font-size:10px}
+.squad-player-copy>span{display:flex;align-items:center;gap:4px;margin-top:3px;color:#6f8176;font-size:7px;text-transform:uppercase;letter-spacing:.06em}
+.os-badge{display:inline-flex;padding:2px 3px;border:1px solid #665b2f;background:#17190e;color:#e3ca65;border-radius:3px;font-size:6px;line-height:1}
+.squad-player-price{color:#d8c662;font-size:9px;font-weight:900;white-space:nowrap}
+.squad-role-empty{padding:8px;color:#506257;font-size:8px;font-style:italic}
+.squad-player-row.new-buy{animation:squadArrival 1.05s ease both;background:linear-gradient(90deg,rgba(242,201,76,.14),rgba(112,185,124,.05))}
+.private-squad-intel{margin-top:10px;padding:10px;border:1px solid #4d5030;background:linear-gradient(145deg,#15190e,#0a140d);border-radius:7px}
+.private-intel-head{display:flex;align-items:center;justify-content:space-between;gap:7px;color:#e8d875;font-size:7px;font-weight:900;letter-spacing:.1em}
+.private-intel-head>div{display:flex;align-items:center;gap:5px}
+.private-intel-head>b{padding:3px 4px;border:1px solid #4d5d40;background:#0b150f;color:#9cb2a2;border-radius:3px;font-size:6px;white-space:nowrap}
+.private-dot{width:6px;height:6px;border-radius:50%;background:#70b97c;box-shadow:0 0 0 3px rgba(112,185,124,.08)}
+.need-chips{display:flex;flex-wrap:wrap;gap:5px;margin-top:9px}
+.need-chip{display:inline-flex;align-items:center;padding:5px 6px;border:1px solid #55542e;background:#191a0e;color:#e7d970;border-radius:4px;font-size:7px;font-weight:900;letter-spacing:.06em}
+.need-chip.urgent{border-color:#73443a;background:#21120f;color:#eea18f}
+.need-chip.covered{border-color:#365b3d;background:#0e1c12;color:#83ca8d}
+.private-intel-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:5px;margin-top:8px}
+.private-intel-grid>div{padding:7px 5px;border:1px solid #293c30;background:#09130d;border-radius:5px}
+.private-intel-grid span{display:block;color:#697b70;font-size:6px;text-transform:uppercase;letter-spacing:.06em}
+.private-intel-grid strong{display:block;margin-top:3px;color:#eef1ed;font-size:9px}
+.private-squad-intel>p{margin:8px 0 0;color:#65776c;font-size:7px;line-height:1.45}
+@keyframes squadArrival{
+  0%{opacity:.15;transform:translateX(-10px);box-shadow:inset 4px 0 #f2c94c}
+  42%{opacity:1;transform:none;box-shadow:inset 4px 0 #f2c94c}
+  100%{box-shadow:inset 0 0 transparent}
+}
+
+@media(max-width:760px){
+  .mobile-private-squad{display:block;padding:0 15px 14px}
+  .desktop-private-squad{display:none}
+  .my-squad-panel{margin-top:2px}
+  .my-squad-summary{padding:11px}
+  .my-squad-list{max-height:250px}
+  .private-intel-grid{grid-template-columns:repeat(3,1fr)}
+}
+@media(max-width:430px){
+  .squad-role-strip{grid-template-columns:repeat(4,1fr)}
+  .private-intel-grid{grid-template-columns:1fr 1fr 1fr}
+}
