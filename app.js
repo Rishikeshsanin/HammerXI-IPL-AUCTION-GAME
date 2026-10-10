@@ -512,9 +512,9 @@ function receiveNetwork(packet,peerId){
       clearJoinRetry();app.pendingJoin=false;toast('Could not join',payload.reason||'Room rejected the request.','err');app.route='join';render()
     }
   } else if(type==='cmd'&&app.game&&amHost())handleCommand(peerId,payload);
-  else if(type==='snapshot'&&app.game){
+  else if(type==='snapshot'&&app.game&&peerId===app.game.hostPeerId){
     const state=payload?.game||payload;if(!state)return;
-    if(peerId===app.game.hostPeerId){clearHostMigration();syncHostClock(payload?.hostNow);const hostTeam=app.game.teams.find(t=>t.ownerPeerId===peerId);if(hostTeam)hostTeam.connected=true}
+    clearHostMigration();syncHostClock(payload?.hostNow);const hostTeam=app.game.teams.find(t=>t.ownerPeerId===peerId);if(hostTeam)hostTeam.connected=true;
     const oldStatus=app.game?.auction?.status,oldBid=app.game?.auction?.currentBid; app.game=state;
     app.route=state.phase==='lobby'?'lobby':state.phase;
     if(state.auction?.status==='sold'&&oldStatus!=='sold')beep('sold');else if(state.auction?.currentBid!==oldBid)beep('bid');
