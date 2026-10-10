@@ -61,3 +61,10 @@ All V2 room state remains ephemeral and browser-to-browser. HammerXI still has n
 ## Direct invite links
 
 The lobby's **Copy invite link** button copies a full HammerXI URL containing the live room code. Opening that link takes a friend directly to the Join Auction screen with the room code prefilled; they only need to choose their owner/team identity and join.
+
+
+## Fast bids and rollback
+
+Live auctions include normal increment bidding plus **+₹50L** and **+₹1 Cr** quick-bid controls. Quick bids still pass through all normal purse, squad, overseas and PASS-state validation.
+
+The host also has a conservative **Previous player** control. It is available only on a fresh current lot before any accepted bid. If the previous player was sold, HammerXI refunds the winning franchise, removes the purchase and reopens that player cleanly.
