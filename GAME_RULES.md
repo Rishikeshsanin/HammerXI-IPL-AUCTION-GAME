@@ -48,3 +48,10 @@ Each franchise selects exactly 11 players. A Playing XI may contain at most 4 ov
 
 ### Newspaper and Hall of Fame
 The Auction Newspaper is generated locally from the room's final auction data. Hall of Fame is an optional host setting; its awards are entertainment based on the current room's auction results, not objective cricket-performance rankings.
+
+
+### Fast bids
+In addition to the standard increment button, owners can jump the current price by **₹50L** or **₹1 Cr**. These shortcuts do not bypass purse protection, overseas limits, PASS state or highest-bidder restrictions.
+
+### Previous player
+The host can reopen the immediately previous player only while the new current lot is still fresh and has no accepted bid. Reopening a sold player reverses the sale, refunds the winning franchise and removes that player from its squad before the lot restarts.
