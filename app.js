@@ -328,17 +328,17 @@ function renderPrivateSquadPanel(team,g){
     const buys=(team.players||[]).filter(b=>byId(b.playerId)?.role===role);
     const rows=buys.map(b=>{
       const p=byId(b.playerId);if(!p)return '';
-      return \`<div class="squad-player-row ${p.id===justBought?'new-buy':''}"><div class="squad-player-copy"><strong>${esc(p.name)}</strong><span>${p.overseas?'<b class="os-badge">OS</b>':''}${esc(ROLE_LABEL[p.role]||p.role)}</span></div><div class="squad-player-price">${fmtPrice(b.price)}</div></div>\`;
+      return `<div class="squad-player-row ${p.id===justBought?'new-buy':''}"><div class="squad-player-copy"><strong>${esc(p.name)}</strong><span>${p.overseas?'<b class="os-badge">OS</b>':''}${esc(ROLE_LABEL[p.role]||p.role)}</span></div><div class="squad-player-price">${fmtPrice(b.price)}</div></div>`;
     }).join('');
-    return \`<section class="squad-role-group"><div class="squad-role-head"><span>${SQUAD_ROLE_SHORT[role]}</span><b>${buys.length}</b><small>target ${intel.targets[role]}</small></div>${rows||'<div class="squad-role-empty">No players yet</div>'}</section>\`;
+    return `<section class="squad-role-group"><div class="squad-role-head"><span>${SQUAD_ROLE_SHORT[role]}</span><b>${buys.length}</b><small>target ${intel.targets[role]}</small></div>${rows||'<div class="squad-role-empty">No players yet</div>'}</section>`;
   }).join('');
   const needs=intel.needs.length
-    ?intel.needs.map(n=>\`<span class="need-chip ${n.role==='WK'?'urgent':''}">+${n.missing} ${SQUAD_ROLE_SHORT[n.role]}</span>\`).join('')
+    ?intel.needs.map(n=>`<span class="need-chip ${n.role==='WK'?'urgent':''}">+${n.missing} ${SQUAD_ROLE_SHORT[n.role]}</span>`).join('')
     :'<span class="need-chip covered">Core role balance covered ✓</span>';
-  return \`<details class="my-squad-panel" open>
+  return `<details class="my-squad-panel" open>
     <summary class="my-squad-summary"><div><span class="section-label">MY SQUAD</span><strong>${team.players.length}/${g.settings.squadSize}</strong></div><div class="squad-summary-right"><span>${fmtPrice(team.budget)}</span><small>${overseasCount(team)}/${g.settings.overseasLimit} OS</small></div></summary>
     <div class="my-squad-body">
-      <div class="squad-role-strip">${SQUAD_ROLE_ORDER.map(r=>\`<span><b>${SQUAD_ROLE_SHORT[r]}</b> ${intel.counts[r]}</span>\`).join('')}</div>
+      <div class="squad-role-strip">${SQUAD_ROLE_ORDER.map(r=>`<span><b>${SQUAD_ROLE_SHORT[r]}</b> ${intel.counts[r]}</span>`).join('')}</div>
       <div class="my-squad-list">${roleGroups}</div>
       <section class="private-squad-intel" data-private-team="${esc(team.id)}">
         <div class="private-intel-head"><div><span class="private-dot"></span>PRIVATE · LIVE SQUAD NEEDS</div><b>ONLY YOU</b></div>
@@ -347,7 +347,7 @@ function renderPrivateSquadPanel(team,g){
         <p>HammerXI balance guidance only. The completion floor keeps ₹30L available for every remaining mandatory squad slot.</p>
       </section>
     </div>
-  </details>\`;
+  </details>`;
 }
 
 function renderScoreTeam(t,me,g){const passed=g.auction.passedTeamIds.includes(t.id);return `<div class="score-team ${t.id===me?.id?'me':''} ${g.auction.highestTeamId===t.id?'leading':''} ${passed?'passed':''}">${crest(t,'sm')}<div class="meta"><strong>${esc(t.name)}</strong><span>${t.players.length}/${g.settings.squadSize} · ${overseasCount(t)}/${g.settings.overseasLimit} OS</span></div><div class="team-auction-state">${passed?'<span class="pass-state">PASS</span>':''}<div class="money">${fmtPrice(t.budget)}</div></div></div>`}
