@@ -21,7 +21,7 @@ const app = {
   },
   identity:null, network:null, game:null, networkStatus:'offline', pendingJoin:false,
   hostClock:null, timerClock:null, advanceTimer:null, joinRetryTimer:null, hostMigrationTimer:null,
-  photoCache:new Map(), photoInflight:new Map(),
+  photoCache:new Map(), photoInflight:new Map(), photoBroadcastKey:null,
   broadcastMode:false, lastTensionSecond:null, lastTensionLot:null,
   squadPanelOpen:!(typeof window!=='undefined'&&window.matchMedia?.('(max-width:760px)')?.matches),
   clockOffsetMs:0, lastHostSyncAt:0, lastClockBroadcastAt:0
@@ -129,7 +129,7 @@ function beep(kind='bid'){
 function header(){
   const status= app.networkStatus==='online' ? ['Live P2P',''] : app.networkStatus==='local' ? ['Local fallback','warn'] : ['No room','off'];
   return `<header class="topbar">
-    <button class="brand" data-action="home" style="background:none;border:0;color:inherit;padding:0"><span class="brand-mark"><span>H</span></span>HAMMER<span style="color:var(--accent)">XI</span><small class="version-mark">V2.1</small></button>
+    <button class="brand" data-action="home" style="background:none;border:0;color:inherit;padding:0"><span class="brand-mark"><span>H</span></span>HAMMER<span style="color:var(--accent)">XI</span><small class="version-mark">V2.1.1</small></button>
     <div class="top-actions">
       <span class="privacy-pill"><span class="dot"></span>No accounts · no permanent storage</span>
       <span class="status-pill"><span class="dot ${status[1]}"></span>${status[0]}</span>
@@ -226,54 +226,91 @@ const PHOTO_ALIASES={
   'M. Siddharth':'Manimaran Siddharth'
 };
 function playerPhotoQuery(p){return PHOTO_ALIASES[p.name]||p.name}
+function safeSharedPhoto(photo){
+  if(!photo?.src)return null;
+  const src=String(photo.src),sourceUrl=String(photo.sourceUrl||'');
+  if(!/^https:\/\/upload\.wikimedia\.org\//i.test(src))return null;
+  return {
+    src,
+    sourceUrl:/^https:\/\/en\.wikipedia\.org\//i.test(sourceUrl)?sourceUrl:'',
+    title:String(photo.title||'').slice(0,120)
+  };
+}
 async function fetchPlayerPhoto(p){
   if(app.photoCache.has(p.id))return app.photoCache.get(p.id);
   if(app.photoInflight.has(p.id))return app.photoInflight.get(p.id);
   const task=(async()=>{
-    try{
-      const expected=playerPhotoQuery(p);
-      const q=new URLSearchParams({
-        action:'query',
-        titles:expected,
-        redirects:'1',
-        prop:'pageimages|info',
-        piprop:'thumbnail',
-        pithumbsize:'900',
-        pilicense:'free',
-        inprop:'url',
-        format:'json',
-        origin:'*'
-      });
-      const res=await fetch(`https://en.wikipedia.org/w/api.php?${q}`,{credentials:'omit',referrerPolicy:'no-referrer'});
-      if(!res.ok)throw new Error(`Wikipedia photo lookup failed: ${res.status}`);
-      const json=await res.json();
-      const page=Object.values(json?.query?.pages||{})[0];
-      const valid=page && !('missing' in page) && page.thumbnail?.source;
-      const photo=valid?{
-        src:String(page.thumbnail.source).replace(/^http:/,'https:'),
-        sourceUrl:page.fullurl||'https://en.wikipedia.org/',
-        title:page.title||expected
-      }:null;
-      app.photoCache.set(p.id,photo);return photo;
-    }catch{
-      app.photoCache.set(p.id,null);return null;
-    }finally{app.photoInflight.delete(p.id)}
-  })();
+    const expected=playerPhotoQuery(p);
+    const q=new URLSearchParams({
+      action:'query',
+      titles:expected,
+      redirects:'1',
+      prop:'pageimages|info',
+      piprop:'thumbnail',
+      pithumbsize:'900',
+      pilicense:'free',
+      inprop:'url',
+      format:'json',
+      origin:'*'
+    });
+    for(let attempt=0;attempt<2;attempt++){
+      try{
+        const res=await fetch(`https://en.wikipedia.org/w/api.php?${q}`,{credentials:'omit',referrerPolicy:'no-referrer',cache:'default'});
+        if(!res.ok)throw new Error(`Wikipedia photo lookup failed: ${res.status}`);
+        const json=await res.json();
+        const page=Object.values(json?.query?.pages||{})[0];
+        const valid=page && !('missing' in page) && page.thumbnail?.source;
+        const photo=valid?safeSharedPhoto({
+          src:String(page.thumbnail.source).replace(/^http:/,'https:'),
+          sourceUrl:page.fullurl||'https://en.wikipedia.org/',
+          title:page.title||expected
+        }):null;
+        // A genuine "no free thumbnail" is stable; transient network/API failures are not.
+        app.photoCache.set(p.id,photo);return photo;
+      }catch{
+        if(attempt===0){await new Promise(r=>setTimeout(r,350));continue}
+        return null;
+      }
+    }
+    return null;
+  })().finally(()=>app.photoInflight.delete(p.id));
   app.photoInflight.set(p.id,task);return task;
 }
 function photoMarkup(p){
   const cached=app.photoCache.get(p.id);
   return `<img id="player-photo" class="player-photo${cached?.src?' ready':''}" data-player-id="${esc(p.id)}" ${cached?.src?`src="${esc(cached.src)}"`:''} alt="${esc(p.name)}" decoding="async" referrerpolicy="no-referrer"><div class="player-photo-shade"></div><a id="player-photo-credit" class="player-photo-credit${cached?.sourceUrl?' ready':''}" ${cached?.sourceUrl?`href="${esc(cached.sourceUrl)}"`:''} target="_blank" rel="noreferrer noopener">PHOTO · WIKIMEDIA</a>`;
 }
+function applyPlayerPhoto(p,photo){
+  const safe=safeSharedPhoto(photo),current=$('#player-photo');
+  if(!safe?.src||!current||current.dataset.playerId!==p.id)return false;
+  current.onload=()=>current.classList.add('ready');
+  current.onerror=()=>current.classList.remove('ready');
+  if(current.src!==safe.src)current.src=safe.src;else if(current.complete)current.classList.add('ready');
+  const credit=$('#player-photo-credit');
+  if(credit&&safe.sourceUrl){credit.href=safe.sourceUrl;credit.classList.add('ready')}
+  return true;
+}
+function shareCurrentPlayerPhoto(p,photo,target){
+  const safe=safeSharedPhoto(photo);if(!amHost()||!app.network||!safe)return;
+  const key=`${app.game?.roomCode||''}:${p.id}`;
+  if(!target&&app.photoBroadcastKey===key)return;
+  if(!target)app.photoBroadcastKey=key;
+  app.network.send('photo',{playerId:p.id,photo:safe},target);
+}
 async function hydratePlayerPhoto(){
   const p=currentPlayer();if(!p)return;
   const img=$('#player-photo');if(!img||img.dataset.playerId!==p.id)return;
-  const photo=await fetchPlayerPhoto(p);
-  const current=$('#player-photo');if(!photo?.src||!current||current.dataset.playerId!==p.id)return;
-  current.onload=()=>current.classList.add('ready');
-  current.onerror=()=>current.classList.remove('ready');
-  if(current.src!==photo.src)current.src=photo.src;else if(current.complete)current.classList.add('ready');
-  const credit=$('#player-photo-credit');if(credit&&photo.sourceUrl){credit.href=photo.sourceUrl;credit.classList.add('ready')}
+  let photo=app.photoCache.get(p.id);
+  // Give the host's shared URL a short head start so guests do not all hit Wikipedia separately.
+  if(!photo?.src&&!amHost()){
+    await new Promise(r=>setTimeout(r,450));
+    if(currentPlayer()?.id!==p.id)return;
+    photo=app.photoCache.get(p.id);
+  }
+  if(!photo?.src)photo=await fetchPlayerPhoto(p);
+  if(!photo?.src||currentPlayer()?.id!==p.id)return;
+  applyPlayerPhoto(p,photo);
+  if(amHost())shareCurrentPlayerPhoto(p,photo);
 }
 function updateBiddingWar(g){
   const a=g.auction;if(!a||a.status!=='live')return;
@@ -503,7 +540,7 @@ function identityFromDraft(){
 }
 
 async function initNetwork(code){
-  await closeNetwork(); app.networkStatus='connecting'; app.clockOffsetMs=0; app.lastHostSyncAt=0; render();
+  await closeNetwork(); app.networkStatus='connecting'; app.clockOffsetMs=0; app.lastHostSyncAt=0; app.photoBroadcastKey=null; render();
   let net;
   try{
     if(typeof RTCPeerConnection==='undefined' || typeof WebSocket==='undefined') throw new Error('This browser does not support required realtime APIs');
@@ -540,7 +577,7 @@ async function initNetwork(code){
 }
 async function closeNetwork(){
   clearInterval(app.hostClock);clearInterval(app.timerClock);clearTimeout(app.advanceTimer);clearJoinRetry();clearHostMigration();
-  app.hostClock=app.timerClock=app.advanceTimer=null;app.lastClockBroadcastAt=0;app.clockOffsetMs=0;app.lastHostSyncAt=0;
+  app.hostClock=app.timerClock=app.advanceTimer=null;app.lastClockBroadcastAt=0;app.clockOffsetMs=0;app.lastHostSyncAt=0;app.photoBroadcastKey=null;
   try{app.network?.close?.()}catch{} app.network=null;app.networkStatus='offline';
 }
 function onPeerJoin(peerId){
@@ -549,7 +586,11 @@ function onPeerJoin(peerId){
   const known=app.game?.teams.find(x=>x.ownerPeerId===peerId);
   if(known){
     known.connected=true;
-    if(amHost()){app.network.send('snapshot',{game:structuredClone(app.game),hostNow:Date.now()},peerId);broadcast()}
+    if(amHost()){
+      app.network.send('snapshot',{game:structuredClone(app.game),hostNow:Date.now()},peerId);
+      const p=currentPlayer(),photo=p&&app.photoCache.get(p.id);if(p&&photo?.src)shareCurrentPlayerPhoto(p,photo,peerId);
+      broadcast()
+    }
   }
   if(app.pendingJoin&&app.identity)setTimeout(()=>sendJoinRequest(peerId),80);
 }
@@ -579,6 +620,12 @@ function receiveNetwork(packet,peerId){
     app.route=state.phase==='lobby'?'lobby':state.phase;
     if(state.auction?.status==='sold'&&oldStatus!=='sold')beep('sold');else if(state.auction?.currentBid!==oldBid)beep('bid');
     startTimerClock();render();
+  } else if(type==='photo'&&app.game&&peerId===app.game.hostPeerId){
+    const p=byId(payload?.playerId),photo=safeSharedPhoto(payload?.photo);
+    if(p&&photo){
+      app.photoCache.set(p.id,photo);
+      if(currentPlayer()?.id===p.id)applyPlayerPhoto(p,photo);
+    }
   } else if(type==='sync'&&app.game&&peerId===app.game.hostPeerId){
     clearHostMigration();syncHostClock(payload?.hostNow);
     const a=app.game.auction,s=payload?.auction;
