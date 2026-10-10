@@ -82,3 +82,8 @@ V2.1 upgrades the live auction owner's **MY SQUAD** area without exposing strate
 - The panel is collapsible and remains available on mobile even though the full left auction sidebar is hidden there.
 
 The role targets are HammerXI balance guidance, not mandatory auction rules. Core purse protection and squad restrictions remain unchanged.
+
+
+## V2.1.1 — Player photo reliability
+
+Player photos remain exact-match Wikimedia/Wikipedia assets with initials as the safe fallback. V2.1.1 improves cross-screen reliability by letting the current host share the resolved Wikimedia photo metadata with connected guests, while guests retain their own exact-page retry fallback if that message is missed. Transient Wikipedia API failures are no longer cached as permanent "no photo" results.
