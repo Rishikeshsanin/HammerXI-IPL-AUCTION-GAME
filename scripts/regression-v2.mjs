@@ -170,6 +170,19 @@ eq((auctionHtml.match(/private-squad-intel/g)||[]).length,2,'Own private squad p
 ok(auctionHtml.includes(`data-private-team="${hostTeam.id}"`),'Private intelligence must belong to current owner');
 ok(!auctionHtml.includes(`data-private-team="${peerTeam.id}"`),'Opponent private intelligence must never render on this client');
 ok(!renderBroadcastAuction().includes('PRIVATE · LIVE SQUAD NEEDS'),'Broadcast screen must never expose private squad needs');
+
+// A purchase must immediately update role counts and the grouped private squad list.
+const currentAuctionPlayer=PLAYERS.find(p=>p.id===app.game.auction.queue[app.game.auction.index].playerId);
+hostTeam.players.push({playerId:currentAuctionPlayer.id,price:2.5});
+hostTeam.budget=122.5;
+const boughtIntel=squadNeeds(hostTeam,app.game);
+eq(boughtIntel.counts[currentAuctionPlayer.role],1,'New purchase must increment its role count');
+app.game.auction.status='sold';app.game.auction.resolution={teamId:hostTeam.id,price:2.5};
+const boughtPanel=renderPrivateSquadPanel(hostTeam,app.game);
+ok(boughtPanel.includes(currentAuctionPlayer.name),'Bought player must appear in MY SQUAD');
+ok(boughtPanel.includes('new-buy'),'Current SOLD purchase must receive arrival highlight');
+hostTeam.players=[];hostTeam.budget=125;app.game.auction.status='live';app.game.auction.resolution=null;
+
 app.squadPanelOpen=false;
 ok(!renderPrivateSquadPanel(hostTeam,app.game).includes('class="my-squad-panel" open'),'Collapsed squad preference must survive rerenders');
 app.squadPanelOpen=true;
