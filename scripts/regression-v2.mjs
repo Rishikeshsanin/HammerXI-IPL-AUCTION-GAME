@@ -50,7 +50,8 @@ const factory = new Function(
     updateBiddingWar, resolveSold, resolveUnsold, advancePlayer, reversePreviousLot, canReversePreviousLot, finishAuction,
     ensurePostAuction, openTradeWindow, startXiBuilder, proposeTrade, respondTrade,
     autoPickXi, validateXi, xiTargetSize, lockXi, autoFillAllXi, revealResults,
-    renderPostAuction, renderTradeWindow, renderXiBuilder, renderResults, renderBroadcastAuction, drawNewspaper,
+    renderAuction, renderPostAuction, renderTradeWindow, renderXiBuilder, renderResults, renderBroadcastAuction, drawNewspaper,
+    squadRoleCounts, squadRoleTargets, squadNeeds, renderPrivateSquadPanel,
     applySetting, handleCommand, handleJoin, receiveNetwork, onPeerJoin, onPeerLeave, inviteUrl, applyInviteDeepLink,
     startJoinRetry, clearJoinRetry, syncHostClock, networkNow
   };`
@@ -66,7 +67,8 @@ const {
   updateBiddingWar, resolveSold, resolveUnsold, advancePlayer, reversePreviousLot, canReversePreviousLot, finishAuction,
   ensurePostAuction, openTradeWindow, startXiBuilder, proposeTrade, respondTrade,
   autoPickXi, validateXi, xiTargetSize, lockXi, autoFillAllXi, revealResults,
-  renderPostAuction, renderTradeWindow, renderXiBuilder, renderResults, renderBroadcastAuction, drawNewspaper,
+  renderAuction, renderPostAuction, renderTradeWindow, renderXiBuilder, renderResults, renderBroadcastAuction, drawNewspaper,
+  squadRoleCounts, squadRoleTargets, squadNeeds, renderPrivateSquadPanel,
   applySetting, handleCommand, handleJoin, receiveNetwork, onPeerJoin, onPeerLeave, inviteUrl, applyInviteDeepLink,
   startJoinRetry, clearJoinRetry, syncHostClock, networkNow
 } = engine;
@@ -150,6 +152,24 @@ startAuction('host');
 eq(app.game.phase,'auction','Host start must enter auction phase');
 ok(app.game.auction.queue.length>0,'Auction queue must be populated');
 eq(app.game.auction.status,'live','First lot must be live');
+
+// V2.1 private squad intelligence is derived locally from only the current owner's team.
+const emptyIntel=squadNeeds(hostTeam,app.game);
+eq(emptyIntel.counts.WK,0,'Empty squad WK count');
+eq(emptyIntel.targets.WK,2,'18-player squad should guide toward two wicketkeepers');
+eq(emptyIntel.targets.BAT,4,'18-player squad batter guidance');
+eq(emptyIntel.targets.AR,3,'18-player squad all-rounder guidance');
+eq(emptyIntel.targets.BOWL,6,'18-player squad bowler guidance');
+eq(emptyIntel.minCompletionPurse,5.4,'18 open slots require ₹5.4 Cr completion floor');
+ok(emptyIntel.needs.some(x=>x.role==='WK'&&x.missing===2),'Private needs must identify missing wicketkeepers');
+const privatePanel=renderPrivateSquadPanel(hostTeam,app.game);
+ok(privatePanel.includes('PRIVATE · LIVE SQUAD NEEDS'),'Private squad panel must render live needs');
+ok(privatePanel.includes('ONLY YOU'),'Private squad panel must be explicitly labelled private');
+const auctionHtml=renderAuction();
+eq((auctionHtml.match(/private-squad-intel/g)||[]).length,2,'Own private squad panel should render for desktop and mobile');
+ok(auctionHtml.includes(`data-private-team="${hostTeam.id}"`),'Private intelligence must belong to current owner');
+ok(!auctionHtml.includes(`data-private-team="${peerTeam.id}"`),'Opponent private intelligence must never render on this client');
+ok(!renderBroadcastAuction().includes('PRIVATE · LIVE SQUAD NEEDS'),'Broadcast screen must never expose private squad needs');
 
 // Pause/continue freezes remaining clock instead of restarting a full clock.
 const originalDeadline=app.game.auction.deadline;
