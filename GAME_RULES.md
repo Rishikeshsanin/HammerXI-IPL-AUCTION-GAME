@@ -55,3 +55,9 @@ In addition to the standard increment button, owners can jump the current price 
 
 ### Previous player
 The host can reopen the immediately previous player only while the new current lot is still fresh and has no accepted bid. Reopening a sold player reverses the sale, refunds the winning franchise and removes that player from its squad before the lot restarts.
+
+
+### Private live squad needs
+During the auction, each owner receives a private squad-balance panel on their own device. It groups purchases by role and can recommend role areas still below HammerXI's balance targets. This guidance is informational only and does not change bidding eligibility, squad-size rules or the overseas cap.
+
+The private needs panel is not rendered for other franchises and is never displayed in Broadcast Mode. The completion-floor figure is the same purse-safety principle used by bidding protection: ₹30L reserved for every remaining mandatory squad slot.
