@@ -23,6 +23,7 @@ const app = {
   hostClock:null, timerClock:null, advanceTimer:null, joinRetryTimer:null, hostMigrationTimer:null,
   photoCache:new Map(), photoInflight:new Map(),
   broadcastMode:false, lastTensionSecond:null, lastTensionLot:null,
+  squadPanelOpen:!(typeof window!=='undefined'&&window.matchMedia?.('(max-width:760px)')?.matches),
   clockOffsetMs:0, lastHostSyncAt:0, lastClockBroadcastAt:0
 };
 
@@ -335,7 +336,7 @@ function renderPrivateSquadPanel(team,g){
   const needs=intel.needs.length
     ?intel.needs.map(n=>`<span class="need-chip ${n.role==='WK'?'urgent':''}">+${n.missing} ${SQUAD_ROLE_SHORT[n.role]}</span>`).join('')
     :'<span class="need-chip covered">Core role balance covered ✓</span>';
-  return `<details class="my-squad-panel" open>
+  return `<details class="my-squad-panel" ${app.squadPanelOpen?'open':''}>
     <summary class="my-squad-summary"><div><span class="section-label">MY SQUAD</span><strong>${team.players.length}/${g.settings.squadSize}</strong></div><div class="squad-summary-right"><span>${fmtPrice(team.budget)}</span><small>${overseasCount(team)}/${g.settings.overseasLimit} OS</small></div></summary>
     <div class="my-squad-body">
       <div class="squad-role-strip">${SQUAD_ROLE_ORDER.map(r=>`<span><b>${SQUAD_ROLE_SHORT[r]}</b> ${intel.counts[r]}</span>`).join('')}</div>
@@ -864,6 +865,7 @@ async function leaveRoom(){await closeNetwork();app.game=null;app.identity=null;
 
 // UI events
 document.addEventListener('input',e=>{const k=e.target?.dataset?.draft;if(k){let v=e.target.value;if(['maxTeams','squadSize','purse','timerSeconds'].includes(k))v=Number(v);app.draft[k]=v}});
+document.addEventListener('toggle',e=>{if(e.target?.classList?.contains?.('my-squad-panel'))app.squadPanelOpen=!!e.target.open},true);
 document.addEventListener('change',e=>{const k=e.target?.dataset?.draft;if(k){let v=e.target.value;if(['maxTeams','squadSize','purse','timerSeconds'].includes(k))v=Number(v);app.draft[k]=v;if(app.route==='create'&&['maxTeams','squadSize','purse','timerSeconds'].includes(k))render()}const s=e.target?.dataset?.setting;if(s)command({type:'setting',key:s,value:Number(e.target.value)});if(e.target?.id==='xi-captain')command({type:'xi-role',role:'captain',playerId:e.target.value||null});if(e.target?.id==='xi-keeper')command({type:'xi-role',role:'wicketkeeper',playerId:e.target.value||null})});
 document.addEventListener('submit',e=>{if(e.target.id==='create-form'){e.preventDefault();createRoom()}if(e.target.id==='join-form'){e.preventDefault();joinRoom()}});
 document.addEventListener('click',e=>{
