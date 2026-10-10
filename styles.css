@@ -209,3 +209,17 @@ body:before{content:"";position:fixed;inset:0;pointer-events:none;z-index:-1;bac
   .post-shell{margin:28px auto}.post-hero{padding:22px}.post-flow{grid-template-columns:1fr 1fr}.post-actions .btn{width:100%}
   .xi-grid{grid-template-columns:1fr}.newspaper{padding:16px}.newspaper-grid{grid-template-columns:1fr}.newspaper-grid article,.newspaper-grid article:nth-child(4){grid-column:auto;border-right:0}.trade-market,.trade-side,.xi-main,.xi-side{padding:15px}
 }
+
+
+/* Realtime stability + fast auction controls */
+.quick-bids{display:grid;grid-template-columns:1fr 1fr;gap:7px;margin-top:7px}
+.quick-bid{min-height:40px;border:1px solid #4c5633;background:#11190f;color:#d9c86a;border-radius:7px;font-size:11px;font-weight:900;letter-spacing:.06em;cursor:pointer}
+.quick-bid:hover:not(:disabled){border-color:#8b7936;background:#191d10;color:#f2c94c}
+.quick-bid:disabled{opacity:.35;cursor:not-allowed}
+.host-auction-controls{display:grid;grid-template-columns:1fr 1fr;gap:7px}
+.host-auction-controls .btn:last-child{grid-column:1/-1}
+@media(max-width:760px){
+  .quick-bids{grid-template-columns:1fr 1fr}
+  .host-auction-controls{grid-template-columns:1fr}
+  .host-auction-controls .btn:last-child{grid-column:auto}
+}
