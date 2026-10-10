@@ -20,10 +20,54 @@ const app = {
     maxTeams:6, squadSize:18, purse:125, timerSeconds:12
   },
   identity:null, network:null, game:null, networkStatus:'offline', pendingJoin:false,
-  hostClock:null, timerClock:null, advanceTimer:null,
+  hostClock:null, timerClock:null, advanceTimer:null, joinRetryTimer:null, hostMigrationTimer:null,
   photoCache:new Map(), photoInflight:new Map(),
-  broadcastMode:false, lastTensionSecond:null, lastTensionLot:null
+  broadcastMode:false, lastTensionSecond:null, lastTensionLot:null,
+  clockOffsetMs:0, lastHostSyncAt:0, lastClockBroadcastAt:0
 };
+
+function networkNow(){return Date.now()+Number(app.clockOffsetMs||0)}
+function syncHostClock(hostNow){
+  if(!Number.isFinite(hostNow))return;
+  const measured=hostNow-Date.now();
+  app.clockOffsetMs=app.lastHostSyncAt ? Math.round(app.clockOffsetMs*.7+measured*.3) : measured;
+  app.lastHostSyncAt=Date.now();
+}
+function clearJoinRetry(){clearInterval(app.joinRetryTimer);app.joinRetryTimer=null}
+function clearHostMigration(){clearTimeout(app.hostMigrationTimer);app.hostMigrationTimer=null}
+function sendJoinRequest(target){
+  if(!app.pendingJoin||!app.identity||!app.network)return;
+  app.network.send('join',app.identity,target);
+}
+function startJoinRetry(){
+  clearJoinRetry();
+  sendJoinRequest();
+  let attempts=1;
+  app.joinRetryTimer=setInterval(()=>{
+    if(!app.pendingJoin){clearJoinRetry();return}
+    attempts++;
+    sendJoinRequest();
+    if(attempts===7)toast('Still finding the host','HammerXI is retrying automatically. Keep the host lobby open and check that both devices show Live P2P.','err');
+  },1200);
+}
+function scheduleHostMigration(peerId){
+  clearHostMigration();
+  app.hostMigrationTimer=setTimeout(()=>{
+    app.hostMigrationTimer=null;
+    const g=app.game;if(!g||g.hostPeerId!==peerId||app.network?.peers?.has(peerId))return;
+    const candidates=g.teams
+      .filter(x=>x.connected!==false&&x.ownerPeerId!==peerId)
+      .map(x=>x.ownerPeerId).filter(Boolean);
+    if(app.network?.selfId&&!candidates.includes(app.network.selfId))candidates.push(app.network.selfId);
+    const next=[...new Set(candidates)].sort()[0];
+    if(next){
+      g.hostPeerId=next;
+      addActivity(`Host connection was lost. ${g.teams.find(x=>x.ownerPeerId===next)?.ownerName||'A peer'} is now auction host.`,'sold');
+      if(amHost()){broadcast();startHostClock()}
+      render();
+    }
+  },4000);
+}
 
 function inviteUrl(code){
   const url=new URL(location.href);
@@ -391,71 +435,104 @@ function identityFromDraft(){
 }
 
 async function initNetwork(code){
-  await closeNetwork(); app.networkStatus='connecting'; render();
+  await closeNetwork(); app.networkStatus='connecting'; app.clockOffsetMs=0; app.lastHostSyncAt=0; render();
   let net;
   try{
     if(typeof RTCPeerConnection==='undefined' || typeof WebSocket==='undefined') throw new Error('This browser does not support required realtime APIs');
-    const selfId=peerSelfId; const room=joinPeerRoom({appId:'hammerxi-auction-night-v2',password:`hx-${code}`},code); const wire=room.makeAction('wire'); const peers=new Set();
+    const selfId=peerSelfId;
+    const room=joinPeerRoom(
+      {appId:'hammerxi-auction-night-v2',password:`hx-${code}`},
+      code,
+      {onJoinError:error=>console.warn('HammerXI peer join error',error)}
+    );
+    const wire=room.makeAction('wire'),peers=new Set();
     net={kind:'p2p',selfId,roomCode:code,peers,send:(type,payload,target)=>wire.send({type,payload},{...(target?{target}: {})}),close:()=>room.leave()};
+    app.network=net;
     wire.onMessage=(packet,{peerId})=>receiveNetwork(packet,peerId);
     room.onPeerJoin=peerId=>{if(!peers.has(peerId)){peers.add(peerId);onPeerJoin(peerId)}};
     room.onPeerLeave=peerId=>{peers.delete(peerId);onPeerLeave(peerId)};
     app.networkStatus='online';
   }catch(err){
-    const selfId=`local-${uid()}`; const bc=new BroadcastChannel(`hammerxi-${code}`); const peers=new Set();
+    const selfId=`local-${uid()}`,bc=new BroadcastChannel(`hammerxi-${code}`),peers=new Set();
     net={kind:'local',selfId,roomCode:code,peers,send:(type,payload,target)=>bc.postMessage({from:selfId,target,type,payload}),close:()=>bc.close()};
-    bc.onmessage=e=>{const m=e.data||{};if(m.from===selfId||m.target&&m.target!==selfId)return;if(m.type==='presence'){if(!peers.has(m.from)){peers.add(m.from);onPeerJoin(m.from)};bc.postMessage({from:selfId,target:m.from,type:'presence-ack'});return}if(m.type==='presence-ack'){if(!peers.has(m.from)){peers.add(m.from);onPeerJoin(m.from)};return}receiveNetwork({type:m.type,payload:m.payload},m.from)};
+    app.network=net;
+    bc.onmessage=e=>{
+      const m=e.data||{};if(m.from===selfId||m.target&&m.target!==selfId)return;
+      if(m.type==='presence'){
+        if(!peers.has(m.from)){peers.add(m.from);onPeerJoin(m.from)}
+        bc.postMessage({from:selfId,target:m.from,type:'presence-ack'});return
+      }
+      if(m.type==='presence-ack'){if(!peers.has(m.from)){peers.add(m.from);onPeerJoin(m.from)}return}
+      receiveNetwork({type:m.type,payload:m.payload},m.from)
+    };
     setTimeout(()=>bc.postMessage({from:selfId,type:'presence'}),50); app.networkStatus='local';
     toast('Internet P2P unavailable','This browser entered local test mode. It cannot discover a room hosted in another browser.','err');
   }
-  app.network=net; render(); return net;
+  render(); return net;
 }
 async function closeNetwork(){
-  clearInterval(app.hostClock);clearInterval(app.timerClock);clearTimeout(app.advanceTimer);app.hostClock=app.timerClock=app.advanceTimer=null;
+  clearInterval(app.hostClock);clearInterval(app.timerClock);clearTimeout(app.advanceTimer);clearJoinRetry();clearHostMigration();
+  app.hostClock=app.timerClock=app.advanceTimer=null;app.lastClockBroadcastAt=0;app.clockOffsetMs=0;app.lastHostSyncAt=0;
   try{app.network?.close?.()}catch{} app.network=null;app.networkStatus='offline';
 }
 function onPeerJoin(peerId){
   if(!app.network)return;
-  if(app.game&&amHost()){
-    // New peers must explicitly request a franchise before receiving room state.
-  } else if(app.pendingJoin&&app.identity){setTimeout(()=>app.network?.send('join',app.identity,peerId),120)}
+  clearHostMigration();
+  const known=app.game?.teams.find(x=>x.ownerPeerId===peerId);
+  if(known){
+    known.connected=true;
+    if(amHost()){app.network.send('snapshot',{game:structuredClone(app.game),hostNow:Date.now()},peerId);broadcast()}
+  }
+  if(app.pendingJoin&&app.identity)setTimeout(()=>sendJoinRequest(peerId),80);
 }
 function onPeerLeave(peerId){
   if(!app.game)return;
   const t=app.game.teams.find(x=>x.ownerPeerId===peerId);if(t)t.connected=false;
-  if(app.game.hostPeerId===peerId){
-    const candidates=app.game.teams.filter(x=>x.connected!==false).map(x=>x.ownerPeerId).filter(Boolean); if(app.network?.selfId&&!candidates.includes(app.network.selfId))candidates.push(app.network.selfId);
-    const next=[...new Set(candidates)].sort()[0]; if(next){app.game.hostPeerId=next; addActivity(`Host disconnected. ${app.game.teams.find(x=>x.ownerPeerId===next)?.ownerName||'A peer'} is now auction host.`,'sold');}
-  }
-  if(amHost()){broadcast();startHostClock()} render();
+  if(app.game.hostPeerId===peerId)scheduleHostMigration(peerId);
+  else if(amHost())setTimeout(()=>{if(!app.network?.peers?.has(peerId)){broadcast()}},1200);
+  render();
 }
 function receiveNetwork(packet,peerId){
   if(!packet?.type)return;
   const {type,payload}=packet;
   if(type==='join'&&app.game&&amHost())handleJoin(peerId,payload);
   else if(type==='ack'&&app.pendingJoin){
-    if(payload.accepted){app.game=payload.game;app.pendingJoin=false;app.route=app.game.phase==='lobby'?'lobby':app.game.phase;startTimerClock();render();toast('Joined the auction',`You are ${getMyTeam()?.name||'in the room'}.`,'ok')}
-    else {toast('Could not join',payload.reason||'Room rejected the request.','err')}
+    if(payload.accepted){
+      clearJoinRetry();syncHostClock(payload.hostNow);app.game=payload.game;app.pendingJoin=false;app.route=app.game.phase==='lobby'?'lobby':app.game.phase;
+      startTimerClock();render();toast('Joined the auction',`You are ${getMyTeam()?.name||'in the room'}.`,'ok')
+    } else {
+      clearJoinRetry();app.pendingJoin=false;toast('Could not join',payload.reason||'Room rejected the request.','err');app.route='join';render()
+    }
   } else if(type==='cmd'&&app.game&&amHost())handleCommand(peerId,payload);
   else if(type==='snapshot'&&app.game){
-    const oldStatus=app.game?.auction?.status,oldBid=app.game?.auction?.currentBid; app.game=payload;
-    app.route=payload.phase==='lobby'?'lobby':payload.phase;
-    if(payload.auction?.status==='sold'&&oldStatus!=='sold')beep('sold');else if(payload.auction?.currentBid!==oldBid)beep('bid');
+    const state=payload?.game||payload;if(!state)return;
+    if(peerId===app.game.hostPeerId){clearHostMigration();syncHostClock(payload?.hostNow);const hostTeam=app.game.teams.find(t=>t.ownerPeerId===peerId);if(hostTeam)hostTeam.connected=true}
+    const oldStatus=app.game?.auction?.status,oldBid=app.game?.auction?.currentBid; app.game=state;
+    app.route=state.phase==='lobby'?'lobby':state.phase;
+    if(state.auction?.status==='sold'&&oldStatus!=='sold')beep('sold');else if(state.auction?.currentBid!==oldBid)beep('bid');
     startTimerClock();render();
+  } else if(type==='sync'&&app.game&&peerId===app.game.hostPeerId){
+    clearHostMigration();syncHostClock(payload?.hostNow);
+    const a=app.game.auction,s=payload?.auction;
+    if(a&&s&&app.game.phase==='auction'&&a.round===s.round&&a.index===s.index){
+      a.deadline=s.deadline;a.paused=s.paused;a.pauseRemaining=s.pauseRemaining;a.status=s.status;
+      updateTimerDom();
+    }
   } else if(type==='notice')toast(payload.title||'Auction',payload.message||'',payload.kind||'');
 }
-function broadcast(){if(!app.game||!app.network)return;app.network.send('snapshot',structuredClone(app.game));render()}
+function broadcast(){if(!app.game||!app.network)return;app.network.send('snapshot',{game:structuredClone(app.game),hostNow:Date.now()});render()}
 function sendNotice(peerId,title,message,kind='err'){if(peerId===app.network?.selfId)toast(title,message,kind);else app.network?.send('notice',{title,message,kind},peerId)}
 function addActivity(text,kind=''){if(!app.game)return;app.game.activity.push({id:uid(),text,kind,at:Date.now()});app.game.activity=app.game.activity.slice(-60)}
 
 function handleJoin(peerId,ident){
   const g=app.game;if(g.phase!=='lobby')return sendNotice(peerId,'Auction already started','This room is no longer accepting franchises.');
-  const existing=g.teams.find(t=>t.ownerPeerId===peerId);if(existing){app.network.send('ack',{accepted:true,game:structuredClone(g)},peerId);return}
-  if(g.teams.length>=g.settings.maxTeams)return app.network.send('ack',{accepted:false,reason:'The room is full.'},peerId);
-  const sameName=g.teams.some(t=>t.name.toLowerCase()===String(ident.name).toLowerCase()); if(sameName)return app.network.send('ack',{accepted:false,reason:'That franchise name is already taken. Pick another.'},peerId);
-  if(ident.kind==='franchise'&&g.teams.some(t=>t.kind==='franchise'&&t.templateId===ident.templateId))return app.network.send('ack',{accepted:false,reason:'That IPL franchise is already taken in this room.'},peerId);
+  if(!ident||typeof ident!=='object'||!String(ident.ownerName||'').trim()||!String(ident.name||'').trim())return app.network.send('ack',{accepted:false,reason:'Invalid franchise identity.',hostNow:Date.now()},peerId);
+  const existing=g.teams.find(t=>t.ownerPeerId===peerId);if(existing){existing.connected=true;app.network.send('ack',{accepted:true,game:structuredClone(g),hostNow:Date.now()},peerId);return}
+  if(g.teams.length>=g.settings.maxTeams)return app.network.send('ack',{accepted:false,reason:'The room is full.',hostNow:Date.now()},peerId);
+  const sameName=g.teams.some(t=>t.name.toLowerCase()===String(ident.name).toLowerCase()); if(sameName)return app.network.send('ack',{accepted:false,reason:'That franchise name is already taken. Pick another.',hostNow:Date.now()},peerId);
+  if(ident.kind==='franchise'&&g.teams.some(t=>t.kind==='franchise'&&t.templateId===ident.templateId))return app.network.send('ack',{accepted:false,reason:'That IPL franchise is already taken in this room.',hostNow:Date.now()},peerId);
   const t={id:uid(),ownerPeerId:peerId,ownerName:String(ident.ownerName).slice(0,22),name:String(ident.name).slice(0,26),colors:ident.colors,mark:ident.mark,kind:ident.kind,templateId:ident.templateId,budget:g.settings.purse,players:[],connected:true};
-  g.teams.push(t);addActivity(`${t.ownerName} joined as ${t.name}.`);app.network.send('ack',{accepted:true,game:structuredClone(g)},peerId);broadcast();
+  g.teams.push(t);addActivity(`${t.ownerName} joined as ${t.name}.`);app.network.send('ack',{accepted:true,game:structuredClone(g),hostNow:Date.now()},peerId);broadcast();
 }
 function handleCommand(peerId,cmd){
   if(!app.game||!cmd)return;
@@ -668,7 +745,10 @@ async function createRoom(){
   try{app.identity=identityFromDraft();const code=roomCode();const net=await initNetwork(code);const t={id:uid(),ownerPeerId:net.selfId,ownerName:app.identity.ownerName,name:app.identity.name,colors:app.identity.colors,mark:app.identity.mark,kind:app.identity.kind,templateId:app.identity.templateId,budget:Number(app.draft.purse),players:[],connected:true};app.game={version:2,roomCode:code,hostPeerId:net.selfId,phase:'lobby',settings:{maxTeams:Number(app.draft.maxTeams),squadSize:Number(app.draft.squadSize),purse:Number(app.draft.purse),timerSeconds:Number(app.draft.timerSeconds),overseasLimit:Number(app.draft.squadSize)>=18?7:6,hallOfFame:false},teams:[t],activity:[{id:uid(),text:`${t.ownerName} created the auction room.`,kind:'',at:Date.now()}],auction:null};app.route='lobby';app.pendingJoin=false;render();toast('Room created',`Invite friends with code ${code}.`,'ok')}catch(e){toast('Check your setup',e.message,'err')}
 }
 async function joinRoom(){
-  try{app.identity=identityFromDraft();const code=app.draft.joinCode.trim().toUpperCase();if(!/^[A-Z2-9]{6}$/.test(code))throw new Error('Enter the 6-character room code');app.pendingJoin=true;app.game=null;app.route='lobby';const net=await initNetwork(code);setTimeout(()=>{if(app.pendingJoin)net.send('join',app.identity)},700);setTimeout(()=>{if(app.pendingJoin)toast('Still looking for host','Check the code and make sure the host has the lobby open.','err')},7000)}catch(e){app.pendingJoin=false;toast('Could not join',e.message,'err')}
+  try{
+    app.identity=identityFromDraft();const code=app.draft.joinCode.trim().toUpperCase();if(!/^[A-Z2-9]{6}$/.test(code))throw new Error('Enter the 6-character room code');
+    app.pendingJoin=true;app.game=null;app.route='lobby';await initNetwork(code);startJoinRetry();
+  }catch(e){clearJoinRetry();app.pendingJoin=false;toast('Could not join',e.message,'err')}
 }
 async function leaveRoom(){await closeNetwork();app.game=null;app.identity=null;app.pendingJoin=false;app.route='home';render()}
 
