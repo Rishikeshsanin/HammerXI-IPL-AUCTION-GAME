@@ -46,7 +46,7 @@ const factory = new Function(
   'FRANCHISES','LOGO_PRESETS','PLAYERS','POOL_SIZE_BY_TEAMS','ROLE_LABEL','joinPeerRoom','peerSelfId',
   `${source}
   return {
-    app, buildPool, buildQueue, startAuction, togglePause, passLot, placeBid, canTeamBid, requestedBidAmount,
+    app, buildPool, buildQueue, startAuction, togglePause, passLot, placeBid, canTeamBid, nextBidAmount, requestedBidAmount,
     updateBiddingWar, resolveSold, resolveUnsold, advancePlayer, reversePreviousLot, canReversePreviousLot, finishAuction,
     ensurePostAuction, openTradeWindow, startXiBuilder, proposeTrade, respondTrade,
     autoPickXi, validateXi, xiTargetSize, lockXi, autoFillAllXi, revealResults,
@@ -62,7 +62,7 @@ const engine = factory(
   'host'
 );
 const {
-  app, buildPool, buildQueue, startAuction, togglePause, passLot, placeBid, canTeamBid, requestedBidAmount,
+  app, buildPool, buildQueue, startAuction, togglePause, passLot, placeBid, canTeamBid, nextBidAmount, requestedBidAmount,
   updateBiddingWar, resolveSold, resolveUnsold, advancePlayer, reversePreviousLot, canReversePreviousLot, finishAuction,
   ensurePostAuction, openTradeWindow, startXiBuilder, proposeTrade, respondTrade,
   autoPickXi, validateXi, xiTargetSize, lockXi, autoFillAllXi, revealResults,
@@ -101,8 +101,6 @@ ok(applyInviteDeepLink(),'Valid invite deep link must be recognized');
 eq(app.route,'join','Invite deep link must open Join screen');
 eq(app.draft.joinCode,'ABC234','Invite deep link must prefill room code');
 globalThis.location={host:'qa.hammerxi.test',href:'https://qa.hammerxi.test/',search:'',hash:'',pathname:'/'};
-
-const nextBidAmountForRegression=(auction,player)=>auction.highestTeamId?Math.round((auction.currentBid+(auction.currentBid<1?.05:auction.currentBid<2?.1:auction.currentBid<5?.2:.25)+Number.EPSILON)*100)/100:player.basePrice;
 
 const makeTeam = (id, peer, name, templateIndex) => ({
   id, ownerPeerId: peer, ownerName: name + ' owner', name,
@@ -190,7 +188,7 @@ eq(app.game.auction.currentBid,Math.round((beforeQuick50+.5+Number.EPSILON)*100)
 const beforeQuick100=app.game.auction.currentBid;
 placeBid('host',liveTeam,1);
 eq(app.game.auction.currentBid,Math.round((beforeQuick100+1+Number.EPSILON)*100)/100,'+₹1Cr must jump bid by ₹1 Cr');
-ok(requestedBidAmount(app.game.auction,player,99)===nextBidAmountForRegression(app.game.auction,player),'Unsupported custom raises must fall back to normal increment');
+eq(requestedBidAmount(app.game.auction,player,99),nextBidAmount(app.game.auction,player),'Unsupported custom raises must fall back to normal increment');
 
 // A genuine alternating two-team sequence must activate BIDDING WAR.
 placeBid('peer2',peerTeam);
