@@ -170,6 +170,10 @@ eq((auctionHtml.match(/private-squad-intel/g)||[]).length,2,'Own private squad p
 ok(auctionHtml.includes(`data-private-team="${hostTeam.id}"`),'Private intelligence must belong to current owner');
 ok(!auctionHtml.includes(`data-private-team="${peerTeam.id}"`),'Opponent private intelligence must never render on this client');
 ok(!renderBroadcastAuction().includes('PRIVATE · LIVE SQUAD NEEDS'),'Broadcast screen must never expose private squad needs');
+app.squadPanelOpen=false;
+ok(!renderPrivateSquadPanel(hostTeam,app.game).includes('class="my-squad-panel" open'),'Collapsed squad preference must survive rerenders');
+app.squadPanelOpen=true;
+ok(renderPrivateSquadPanel(hostTeam,app.game).includes('class="my-squad-panel" open'),'Expanded squad preference must survive rerenders');
 
 // Pause/continue freezes remaining clock instead of restarting a full clock.
 const originalDeadline=app.game.auction.deadline;
