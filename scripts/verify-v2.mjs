@@ -7,8 +7,8 @@ const versionFile = (await readFile('VERSION', 'utf8')).trim();
 
 const must = (ok, message) => { if (!ok) throw new Error(message); };
 
-must(pkg.version === '2.1.0', 'package version must be 2.1.0');
-must(versionFile === '2.1.0', 'VERSION file must be 2.1.0');
+must(pkg.version === '2.1.1', 'package version must be 2.1.1');
+must(versionFile === '2.1.1', 'VERSION file must be 2.1.1');
 for (const token of [
   "hammerxi-auction-night-v2",
   "Wicketkeepers",
@@ -26,7 +26,10 @@ for (const token of [
   "function squadNeeds",
   "function renderPrivateSquadPanel",
   "PRIVATE · LIVE SQUAD NEEDS",
-  "V2.1"
+  "V2.1.1",
+  "shareCurrentPlayerPhoto",
+  "safeSharedPhoto",
+  "type==='photo'"
 ]) must(app.includes(token), `Missing V2 feature marker: ${token}`);
 
 must(ceremony.includes("layout.dataset.hof!=='1'"), 'Hall of Fame must remain optional');
