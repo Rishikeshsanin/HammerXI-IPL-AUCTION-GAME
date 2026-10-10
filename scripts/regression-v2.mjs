@@ -46,12 +46,13 @@ const factory = new Function(
   'FRANCHISES','LOGO_PRESETS','PLAYERS','POOL_SIZE_BY_TEAMS','ROLE_LABEL','joinPeerRoom','peerSelfId',
   `${source}
   return {
-    app, buildPool, buildQueue, startAuction, togglePause, passLot, placeBid, canTeamBid,
-    updateBiddingWar, resolveSold, resolveUnsold, advancePlayer, finishAuction,
+    app, buildPool, buildQueue, startAuction, togglePause, passLot, placeBid, canTeamBid, nextBidAmount, requestedBidAmount,
+    updateBiddingWar, resolveSold, resolveUnsold, advancePlayer, reversePreviousLot, canReversePreviousLot, finishAuction,
     ensurePostAuction, openTradeWindow, startXiBuilder, proposeTrade, respondTrade,
     autoPickXi, validateXi, xiTargetSize, lockXi, autoFillAllXi, revealResults,
     renderPostAuction, renderTradeWindow, renderXiBuilder, renderResults, renderBroadcastAuction, drawNewspaper,
-    applySetting, handleCommand, handleJoin, receiveNetwork, onPeerLeave, inviteUrl, applyInviteDeepLink
+    applySetting, handleCommand, handleJoin, receiveNetwork, onPeerJoin, onPeerLeave, inviteUrl, applyInviteDeepLink,
+    startJoinRetry, clearJoinRetry, syncHostClock, networkNow
   };`
 );
 
@@ -61,20 +62,35 @@ const engine = factory(
   'host'
 );
 const {
-  app, buildPool, buildQueue, startAuction, togglePause, passLot, placeBid, canTeamBid,
-  updateBiddingWar, resolveSold, resolveUnsold, advancePlayer, finishAuction,
+  app, buildPool, buildQueue, startAuction, togglePause, passLot, placeBid, canTeamBid, nextBidAmount, requestedBidAmount,
+  updateBiddingWar, resolveSold, resolveUnsold, advancePlayer, reversePreviousLot, canReversePreviousLot, finishAuction,
   ensurePostAuction, openTradeWindow, startXiBuilder, proposeTrade, respondTrade,
   autoPickXi, validateXi, xiTargetSize, lockXi, autoFillAllXi, revealResults,
   renderPostAuction, renderTradeWindow, renderXiBuilder, renderResults, renderBroadcastAuction, drawNewspaper,
-  applySetting, handleCommand, handleJoin, receiveNetwork, onPeerLeave, inviteUrl, applyInviteDeepLink
+  applySetting, handleCommand, handleJoin, receiveNetwork, onPeerJoin, onPeerLeave, inviteUrl, applyInviteDeepLink,
+  startJoinRetry, clearJoinRetry, syncHostClock, networkNow
 } = engine;
 
 const sent = [];
 app.network = {
   selfId: 'host',
+  peers:new Set(['peer2']),
   send(type, payload, target) { sent.push({ type, payload, target }); }
 };
 app.networkStatus = 'online';
+
+// Host-clock synchronization must compensate for device clock differences.
+const localBefore=Date.now();syncHostClock(localBefore+2500);
+ok(Math.abs(networkNow()-(Date.now()+2500))<150,'Guest timer must track host clock instead of local clock');
+app.clockOffsetMs=0;app.lastHostSyncAt=0;
+
+// Pending joins retry automatically instead of relying on one discovery packet.
+app.pendingJoin=true;app.identity={ownerName:'Retry',name:'Retry XI',kind:'custom',templateId:'custom:retry',colors:['#111','#222'],mark:'RX'};
+sent.length=0;startJoinRetry();
+await new Promise(r=>setTimeout(r,2500));
+clearJoinRetry();app.pendingJoin=false;
+ok(sent.filter(x=>x.type==='join').length>=2,'Join flow must retry when ACK/discovery packets are missed');
+sent.length=0;
 
 // Direct invite links must carry the room code and open the prefilled join flow.
 const direct=inviteUrl('ABC234');
@@ -165,11 +181,18 @@ const player = PLAYERS.find(p=>p.id===app.game.auction.queue[app.game.auction.in
 const [canLeadAgain] = canTeamBid(liveTeam,player,app.game.auction.currentBid,app.game);
 eq(canLeadAgain,false,'Current leader cannot bid against itself');
 
+// Fast +50L / +1Cr bids must use the requested jump while preserving validation.
+const beforeQuick50=app.game.auction.currentBid;
+placeBid('peer2',peerTeam,.5);
+eq(app.game.auction.currentBid,Math.round((beforeQuick50+.5+Number.EPSILON)*100)/100,'+₹50L must jump bid by ₹0.50 Cr');
+const beforeQuick100=app.game.auction.currentBid;
+placeBid('host',liveTeam,1);
+eq(app.game.auction.currentBid,Math.round((beforeQuick100+1+Number.EPSILON)*100)/100,'+₹1Cr must jump bid by ₹1 Cr');
+eq(requestedBidAmount(app.game.auction,player,99),nextBidAmount(app.game.auction,player),'Unsupported custom raises must fall back to normal increment');
+
 // A genuine alternating two-team sequence must activate BIDDING WAR.
-for (let i=0;i<4;i++) {
-  const bidder = i%2===0 ? peerTeam : liveTeam;
-  placeBid(bidder.ownerPeerId,bidder);
-}
+placeBid('peer2',peerTeam);
+placeBid('host',liveTeam);
 ok(app.game.auction.war?.active===true,'Five alternating accepted bids must activate BIDDING WAR');
 ok(renderBroadcastAuction().includes('BIDDING WAR'),'Broadcast mode must surface active bidding war');
 
@@ -182,6 +205,20 @@ eq(winner.players.length,winnerCount+1,'SOLD must add player to winner exactly o
 eq(winner.budget,Math.round((winnerBudget-currentPrice+Number.EPSILON)*100)/100,'SOLD must deduct final price');
 ok(app.game.auction.sold.at(-1)?.war===true,'SOLD record must preserve bidding-war flag');
 clearTimeout(app.advanceTimer); app.advanceTimer=null;
+
+// Host can safely reverse the previous completed lot before the new lot receives a bid.
+const soldPlayerId=app.game.auction.sold.at(-1).playerId,soldTeamId=app.game.auction.sold.at(-1).teamId;
+const soldTeam=app.game.teams.find(t=>t.id===soldTeamId),budgetAfterSale=soldTeam.budget;
+advancePlayer();
+ok(canReversePreviousLot(app.game),'Previous-player control must be available on a fresh new lot');
+handleCommand('peer2',{type:'previous-lot'});
+eq(app.game.auction.index,1,'Non-host must not reverse the previous lot');
+reversePreviousLot();
+eq(app.game.auction.index,0,'Host reverse must reopen previous player');
+ok(!app.game.auction.sold.some(x=>x.playerId===soldPlayerId),'Reversed SOLD record must be removed');
+ok(!soldTeam.players.some(x=>x.playerId===soldPlayerId),'Reversed player must leave winning squad');
+ok(soldTeam.budget>budgetAfterSale,'Reversed sale must refund the winning franchise');
+eq(app.game.auction.status,'live','Reversed previous player must reopen live');
 
 // Host-only pause through command path.
 const pausedBefore=app.game.auction.paused;
@@ -302,13 +339,19 @@ eq(app.game.teams.length,2,'Duplicate franchise name must be rejected');
 // Snapshot must move clients across V2 phases.
 app.network.selfId='join-peer';app.game.teams[1].ownerPeerId='join-peer';
 const snap=structuredClone(app.game);snap.phase='trades';snap.postAuction={tradeProposals:[],tradesCompleted:0};
-receiveNetwork({type:'snapshot',payload:snap},'host');
+receiveNetwork({type:'snapshot',payload:{game:snap,hostNow:Date.now()+500}},'host');
 eq(app.route,'trades','Snapshot must synchronize client route to trade stage');
+const routeBeforeSpoof=app.route,spoof=structuredClone(app.game);spoof.phase='results';
+receiveNetwork({type:'snapshot',payload:{game:spoof,hostNow:Date.now()}},'evil-peer');
+eq(app.route,routeBeforeSpoof,'Non-host snapshots must be ignored');
 
-// Host migration must promote a connected remaining peer.
-app.game.hostPeerId='host';app.game.teams[0].connected=true;app.game.teams[1].connected=true;
+// Host migration uses a grace period so transient WebRTC churn does not split the room.
+app.game.hostPeerId='host';app.game.teams[0].connected=true;app.game.teams[1].connected=true;app.network.peers=new Set(['host']);
 onPeerLeave('host');
-eq(app.game.hostPeerId,'join-peer','Host disconnect must migrate control to a connected peer');
+eq(app.game.hostPeerId,'host','Transient host disconnect must not migrate immediately');
+app.network.peers.delete('host');
+await new Promise(r=>setTimeout(r,4200));
+eq(app.game.hostPeerId,'join-peer','Sustained host disconnect must migrate control after grace period');
 ok(app.game.teams[0].connected===false,'Disconnected host team must be marked offline');
 
 clearInterval(app.hostClock); clearInterval(app.timerClock); clearTimeout(app.advanceTimer);
