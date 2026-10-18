@@ -259,8 +259,9 @@ eq(app.game.auction.paused,false,'Continue should resume auction');
 ok(app.game.auction.deadline-Date.now()<=frozenRemaining+150,'Continue must resume roughly from frozen time');
 ok(app.game.auction.deadline>Date.now(),'Continued deadline must be in the future');
 
-// PASS is reversible and never changes timer.
+// PASS is reversible, lightweight and never changes timer.
 const liveTeam=app.game.teams[0];
+sent.length=0;
 const passDeadline=app.game.auction.deadline;
 passLot('host',liveTeam);
 ok(app.game.auction.passedTeamIds.includes(liveTeam.id),'PASS must mark team passed');
@@ -268,12 +269,17 @@ eq(app.game.auction.deadline,passDeadline,'PASS must not change deadline');
 passLot('host',liveTeam);
 ok(!app.game.auction.passedTeamIds.includes(liveTeam.id),'UNDO PASS must re-enter team');
 eq(app.game.auction.deadline,passDeadline,'UNDO PASS must not change deadline');
+ok(sent.filter(x=>x.type==='auction-delta').length>=2,'PASS/UNDO should use lightweight auction deltas');
+ok(!sent.some(x=>x.type==='snapshot'),'PASS/UNDO hot path must not send full snapshots');
 
 // Accepted bid updates leader and extends deadline.
+sent.length=0;
 const beforeBidDeadline=app.game.auction.deadline;
 placeBid('host',liveTeam);
 eq(app.game.auction.highestTeamId,liveTeam.id,'Accepted bid must set highest team');
 ok(app.game.auction.deadline>=beforeBidDeadline,'Accepted bid must not shorten deadline');
+ok(sent.some(x=>x.type==='auction-delta'),'Accepted bid must broadcast lightweight auction delta');
+ok(!sent.some(x=>x.type==='snapshot'),'Accepted bid hot path must not broadcast a full snapshot');
 const player = PLAYERS.find(p=>p.id===app.game.auction.queue[app.game.auction.index].playerId);
 const [canLeadAgain] = canTeamBid(liveTeam,player,app.game.auction.currentBid,app.game);
 eq(canLeadAgain,false,'Current leader cannot bid against itself');
