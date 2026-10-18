@@ -7,8 +7,8 @@ const versionFile = (await readFile('VERSION', 'utf8')).trim();
 
 const must = (ok, message) => { if (!ok) throw new Error(message); };
 
-must(pkg.version === '2.2.0', 'package version must be 2.2.0');
-must(versionFile === '2.2.0', 'VERSION file must be 2.2.0');
+must(pkg.version === '2.2.1', 'package version must be 2.2.1');
+must(versionFile === '2.2.1', 'VERSION file must be 2.2.1');
 for (const token of [
   "hammerxi-auction-night-v2",
   "Wicketkeepers",
@@ -26,7 +26,7 @@ for (const token of [
   "function squadNeeds",
   "function renderPrivateSquadPanel",
   "PRIVATE · LIVE SQUAD NEEDS",
-  "V2.2",
+  "V2.2.1",
   "auction-delta",
   "activity-delta",
   "requestResync",
@@ -39,4 +39,4 @@ for (const token of [
 must(ceremony.includes("layout.dataset.hof!=='1'"), 'Hall of Fame must remain optional');
 must(ceremony.includes('AUCTION HALL OF FAME'), 'Hall of Fame title missing');
 
-console.log('HammerXI V2.2 verification PASS');
+console.log('HammerXI V2.2.1 verification PASS');
