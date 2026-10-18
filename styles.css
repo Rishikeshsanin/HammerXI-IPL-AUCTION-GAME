@@ -294,3 +294,43 @@ body:before{content:"";position:fixed;inset:0;pointer-events:none;z-index:-1;bac
   .squad-role-strip{grid-template-columns:repeat(4,1fr)}
   .private-intel-grid{grid-template-columns:1fr 1fr 1fr}
 }
+
+
+/* =========================================================
+   HAMMERXI V2.2 — mobile + low-latency hardening
+   ========================================================= */
+.auction-shell,.auction-main,.auction-stage,.player-stage,.player-copy,.bid-block,.my-squad-panel,.mobile-private-squad{min-width:0}
+.player-copy h1,.leader-name,.reason,.squad-player-copy>strong{overflow-wrap:anywhere}
+img{max-width:100%}
+
+@media(max-width:760px){
+  .input,.select,input,select,textarea{font-size:16px;min-height:44px}
+  .icon-btn,.reaction,.quick-bid,.pass-btn,.btn.small{min-height:44px}
+  .icon-btn{width:44px;height:44px}
+  .chat-box input{height:44px;font-size:16px;min-width:0}
+  .chat-box button{width:44px;min-width:44px}
+  .quick-bids{gap:8px}
+  .quick-bid{min-height:44px;font-size:12px}
+  .pass-btn{min-width:96px}
+  .player-copy,.bid-block,.auction-mobile-stats,.mobile-private-squad{width:100%;max-width:100%}
+  .auction-mobile-stats{overflow:hidden}
+  .metric{min-width:0}
+  .metric strong{overflow-wrap:anywhere}
+  .topbar{gap:8px}
+  .top-actions{gap:6px}
+}
+
+@media(max-width:360px){
+  .shell{padding-left:9px;padding-right:9px}
+  .auction-main{padding:6px}
+  .auction-stage{border-radius:14px}
+  .stage-top{padding:9px}
+  .lot-tag{font-size:8px;letter-spacing:.06em}
+  .timer{width:44px;height:44px}
+  .player-stage{padding:11px}
+  .player-copy h1{font-size:34px}
+  .big-price{font-size:38px}
+  .bid-actions{grid-template-columns:minmax(0,1fr) 96px}
+  .auction-mobile-stats{padding-left:11px;padding-right:11px}
+  .mobile-private-squad{padding-left:11px;padding-right:11px}
+}

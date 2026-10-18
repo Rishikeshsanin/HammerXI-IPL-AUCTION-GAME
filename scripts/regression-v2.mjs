@@ -53,7 +53,8 @@ const factory = new Function(
     renderAuction, renderPostAuction, renderTradeWindow, renderXiBuilder, renderResults, renderBroadcastAuction, drawNewspaper,
     squadRoleCounts, squadRoleTargets, squadNeeds, renderPrivateSquadPanel,
     applySetting, handleCommand, handleJoin, receiveNetwork, onPeerJoin, onPeerLeave, inviteUrl, applyInviteDeepLink,
-    startJoinRetry, clearJoinRetry, syncHostClock, networkNow, safeSharedPhoto, shareCurrentPlayerPhoto
+    startJoinRetry, clearJoinRetry, syncHostClock, networkNow, safeSharedPhoto, shareCurrentPlayerPhoto,
+    auctionDeltaPayload, broadcastAuctionDelta, broadcastActivity, scheduleRender
   };`
 );
 
@@ -70,7 +71,8 @@ const {
   renderAuction, renderPostAuction, renderTradeWindow, renderXiBuilder, renderResults, renderBroadcastAuction, drawNewspaper,
   squadRoleCounts, squadRoleTargets, squadNeeds, renderPrivateSquadPanel,
   applySetting, handleCommand, handleJoin, receiveNetwork, onPeerJoin, onPeerLeave, inviteUrl, applyInviteDeepLink,
-  startJoinRetry, clearJoinRetry, syncHostClock, networkNow, safeSharedPhoto, shareCurrentPlayerPhoto
+  startJoinRetry, clearJoinRetry, syncHostClock, networkNow, safeSharedPhoto, shareCurrentPlayerPhoto,
+  auctionDeltaPayload, broadcastAuctionDelta, broadcastActivity, scheduleRender
 } = engine;
 
 const sent = [];
@@ -123,6 +125,39 @@ const makeTeam = (id, peer, name, templateIndex) => ({
   kind: 'franchise', templateId: FRANCHISES[templateIndex].id,
   budget: 125, players: [], connected: true
 });
+// V2.2 deterministic 10-team stress model: full room, full squads and late-auction state.
+const stressTeams=FRANCHISES.map((f,i)=>{
+  const t=makeTeam(`s${i+1}`,i===0?'host':`peer${i+1}`,f.short+' Stress',i);
+  t.players=PLAYERS.slice(i*20,(i+1)*20).map((p,j)=>({playerId:p.id,price:Math.round((.3+(j%8)*.2)*100)/100}));
+  t.budget=50;
+  return t;
+});
+const stressPool=buildPool(10,'stress-10-team');
+const stressQueue=buildQueue(stressPool,'stress-10-team');
+app.game={
+  version:2,roomCode:'STRS10',hostPeerId:'host',phase:'auction',
+  settings:{maxTeams:10,squadSize:20,purse:125,timerSeconds:12,overseasLimit:7,hallOfFame:false},
+  teams:stressTeams,
+  activity:Array.from({length:60},(_,i)=>({id:`a${i}`,text:`Stress activity event ${i} with auction context`,kind:i%3===0?'bid':'',at:Date.now()-i*1000})),
+  stats:{bidCounts:Object.fromEntries(stressTeams.map((t,i)=>[t.id,20+i])),warWins:Object.fromEntries(stressTeams.map((t,i)=>[t.id,i%4]))},
+  auction:{
+    queue:stressQueue,index:Math.min(180,stressQueue.length-1),round:1,currentBid:8.4,highestTeamId:stressTeams[3].id,
+    passedTeamIds:stressTeams.slice(5,9).map(t=>t.id),deadline:Date.now()+9000,status:'live',paused:false,pauseRemaining:0,
+    sold:stressQueue.slice(0,160).map((lot,i)=>({playerId:lot.playerId,teamId:stressTeams[i%10].id,price:1+(i%15)*.25,war:i%7===0,bidCount:3+(i%6),bidTeamCounts:{}})),
+    unsold:stressQueue.slice(160,175).map(x=>x.playerId),resolution:null,
+    bidHistory:Array.from({length:8},(_,i)=>({teamId:stressTeams[i%10].id,at:Date.now()-i*500})),war:null
+  }
+};
+const fullStressBytes=Buffer.byteLength(JSON.stringify({game:app.game,hostNow:Date.now()}));
+const deltaStress=auctionDeltaPayload(true);
+const deltaStressBytes=Buffer.byteLength(JSON.stringify(deltaStress));
+ok(stressQueue.length===235,'10-team stress queue must use all 235 configured lots');
+ok(stressTeams.every(t=>t.players.length===20),'10-team stress model must represent 20-player squads');
+ok(fullStressBytes<256000,`Full 10-team resync snapshot too large: ${fullStressBytes} bytes`);
+ok(deltaStressBytes<12000,`Hot-path auction delta too large: ${deltaStressBytes} bytes`);
+ok(deltaStressBytes<fullStressBytes*.30,`Auction delta must be at least 70% smaller than full snapshot: full=${fullStressBytes}, delta=${deltaStressBytes}`);
+console.log('HammerXI V2.2 10-team stress payloads',{fullStressBytes,deltaStressBytes,reduction:Math.round((1-deltaStressBytes/fullStressBytes)*100)+'%'});
+
 const hostTeam = makeTeam('t1','host','Alpha XI',0);
 const peerTeam = makeTeam('t2','peer2','Beta XI',1);
 app.game = {
@@ -178,10 +213,22 @@ ok(emptyIntel.needs.some(x=>x.role==='WK'&&x.missing===2),'Private needs must id
 const privatePanel=renderPrivateSquadPanel(hostTeam,app.game);
 ok(privatePanel.includes('PRIVATE · LIVE SQUAD NEEDS'),'Private squad panel must render live needs');
 ok(privatePanel.includes('ONLY YOU'),'Private squad panel must be explicitly labelled private');
+app.compactView=false;app.hideRightRail=false;
 const auctionHtml=renderAuction();
-eq((auctionHtml.match(/private-squad-intel/g)||[]).length,2,'Own private squad panel should render for desktop and mobile');
+eq((auctionHtml.match(/private-squad-intel/g)||[]).length,1,'Desktop should render one owner-only private squad panel');
+ok(auctionHtml.includes('desktop-private-squad'),'Desktop should render the desktop squad panel');
+ok(!auctionHtml.includes('mobile-private-squad'),'Desktop should not build hidden mobile squad DOM');
 ok(auctionHtml.includes(`data-private-team="${hostTeam.id}"`),'Private intelligence must belong to current owner');
 ok(!auctionHtml.includes(`data-private-team="${peerTeam.id}"`),'Opponent private intelligence must never render on this client');
+
+app.compactView=true;app.hideRightRail=true;
+const mobileAuctionHtml=renderAuction();
+eq((mobileAuctionHtml.match(/private-squad-intel/g)||[]).length,1,'Mobile should render one owner-only private squad panel');
+ok(!mobileAuctionHtml.includes('desktop-private-squad'),'Mobile must not build hidden desktop squad DOM');
+ok(mobileAuctionHtml.includes('mobile-private-squad'),'Mobile private squad panel must remain available');
+ok(!mobileAuctionHtml.includes('Franchise board'),'Mobile must not build hidden franchise-board DOM');
+ok(!mobileAuctionHtml.includes('Room activity'),'Mobile must not build hidden right-rail DOM');
+app.compactView=false;app.hideRightRail=false;
 ok(!renderBroadcastAuction().includes('PRIVATE · LIVE SQUAD NEEDS'),'Broadcast screen must never expose private squad needs');
 
 // A purchase must immediately update role counts and the grouped private squad list.
@@ -212,8 +259,9 @@ eq(app.game.auction.paused,false,'Continue should resume auction');
 ok(app.game.auction.deadline-Date.now()<=frozenRemaining+150,'Continue must resume roughly from frozen time');
 ok(app.game.auction.deadline>Date.now(),'Continued deadline must be in the future');
 
-// PASS is reversible and never changes timer.
+// PASS is reversible, lightweight and never changes timer.
 const liveTeam=app.game.teams[0];
+sent.length=0;
 const passDeadline=app.game.auction.deadline;
 passLot('host',liveTeam);
 ok(app.game.auction.passedTeamIds.includes(liveTeam.id),'PASS must mark team passed');
@@ -221,12 +269,17 @@ eq(app.game.auction.deadline,passDeadline,'PASS must not change deadline');
 passLot('host',liveTeam);
 ok(!app.game.auction.passedTeamIds.includes(liveTeam.id),'UNDO PASS must re-enter team');
 eq(app.game.auction.deadline,passDeadline,'UNDO PASS must not change deadline');
+ok(sent.filter(x=>x.type==='auction-delta').length>=2,'PASS/UNDO should use lightweight auction deltas');
+ok(!sent.some(x=>x.type==='snapshot'),'PASS/UNDO hot path must not send full snapshots');
 
 // Accepted bid updates leader and extends deadline.
+sent.length=0;
 const beforeBidDeadline=app.game.auction.deadline;
 placeBid('host',liveTeam);
 eq(app.game.auction.highestTeamId,liveTeam.id,'Accepted bid must set highest team');
 ok(app.game.auction.deadline>=beforeBidDeadline,'Accepted bid must not shorten deadline');
+ok(sent.some(x=>x.type==='auction-delta'),'Accepted bid must broadcast lightweight auction delta');
+ok(!sent.some(x=>x.type==='snapshot'),'Accepted bid hot path must not broadcast a full snapshot');
 const player = PLAYERS.find(p=>p.id===app.game.auction.queue[app.game.auction.index].playerId);
 const [canLeadAgain] = canTeamBid(liveTeam,player,app.game.auction.currentBid,app.game);
 eq(canLeadAgain,false,'Current leader cannot bid against itself');
