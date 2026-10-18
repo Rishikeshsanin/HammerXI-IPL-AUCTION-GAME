@@ -213,10 +213,22 @@ ok(emptyIntel.needs.some(x=>x.role==='WK'&&x.missing===2),'Private needs must id
 const privatePanel=renderPrivateSquadPanel(hostTeam,app.game);
 ok(privatePanel.includes('PRIVATE · LIVE SQUAD NEEDS'),'Private squad panel must render live needs');
 ok(privatePanel.includes('ONLY YOU'),'Private squad panel must be explicitly labelled private');
+app.compactView=false;app.hideRightRail=false;
 const auctionHtml=renderAuction();
-eq((auctionHtml.match(/private-squad-intel/g)||[]).length,2,'Own private squad panel should render for desktop and mobile');
+eq((auctionHtml.match(/private-squad-intel/g)||[]).length,1,'Desktop should render one owner-only private squad panel');
+ok(auctionHtml.includes('desktop-private-squad'),'Desktop should render the desktop squad panel');
+ok(!auctionHtml.includes('mobile-private-squad'),'Desktop should not build hidden mobile squad DOM');
 ok(auctionHtml.includes(`data-private-team="${hostTeam.id}"`),'Private intelligence must belong to current owner');
 ok(!auctionHtml.includes(`data-private-team="${peerTeam.id}"`),'Opponent private intelligence must never render on this client');
+
+app.compactView=true;app.hideRightRail=true;
+const mobileAuctionHtml=renderAuction();
+eq((mobileAuctionHtml.match(/private-squad-intel/g)||[]).length,1,'Mobile should render one owner-only private squad panel');
+ok(!mobileAuctionHtml.includes('desktop-private-squad'),'Mobile must not build hidden desktop squad DOM');
+ok(mobileAuctionHtml.includes('mobile-private-squad'),'Mobile private squad panel must remain available');
+ok(!mobileAuctionHtml.includes('Franchise board'),'Mobile must not build hidden franchise-board DOM');
+ok(!mobileAuctionHtml.includes('Room activity'),'Mobile must not build hidden right-rail DOM');
+app.compactView=false;app.hideRightRail=false;
 ok(!renderBroadcastAuction().includes('PRIVATE · LIVE SQUAD NEEDS'),'Broadcast screen must never expose private squad needs');
 
 // A purchase must immediately update role counts and the grouped private squad list.
