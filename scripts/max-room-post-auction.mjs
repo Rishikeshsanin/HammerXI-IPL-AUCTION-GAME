@@ -83,7 +83,7 @@ eq(app.game.phase,'results','All ten locked XIs must reveal results');
 const html=renderResults();
 const renderMs=Math.round((performance.now()-started)*100)/100;
 ok(html.includes('THE AUCTION DAILY'),'10-team results must render newspaper');
-ok(html.includes('AUCTION HALL OF FAME'),'10-team results must render enabled Hall of Fame shell');
+ok(html.includes('data-hof="1"'),'10-team results must propagate enabled Hall of Fame state');
 for(const t of teams)ok(html.includes(t.name),`Results missing team ${t.name}`);
 const finalBytes=Buffer.byteLength(JSON.stringify(app.game));
 ok(finalBytes<256000,`10-team final state too large: ${finalBytes}`);
