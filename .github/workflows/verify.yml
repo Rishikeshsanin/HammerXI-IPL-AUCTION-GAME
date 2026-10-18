@@ -33,6 +33,8 @@ jobs:
         run: node scripts/verify-mobile.mjs
       - name: Run V2 engine regression suite
         run: node scripts/regression-v2.mjs
+      - name: Run 10-team post-auction endurance
+        run: node scripts/max-room-post-auction.mjs
       - name: Verify Trystero adapter contract
         run: node scripts/network-contract.mjs
       - name: Smoke-test browser startup
