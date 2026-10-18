@@ -1,4 +1,4 @@
-# HammerXI V2.1
+# HammerXI V2.2
 
 A private, browser-to-browser cricket auction game for 2–10 friends.
 
@@ -25,7 +25,7 @@ python -m http.server 4173
 Open http://localhost:4173
 
 ## Deployment
-This is a static site and can be deployed directly to Vercel with zero build step.
+This is a static Vercel deployment. The production build uses esbuild to bundle the browser app and Trystero runtime into `dist/` before deployment.
 
 ## Game defaults
 - 2–10 teams
@@ -87,3 +87,19 @@ The role targets are HammerXI balance guidance, not mandatory auction rules. Cor
 ## V2.1.1 — Player photo reliability
 
 Player photos remain exact-match Wikimedia/Wikipedia assets with initials as the safe fallback. V2.1.1 improves cross-screen reliability by letting the current host share the resolved Wikimedia photo metadata with connected guests, while guests retain their own exact-page retry fallback if that message is missed. Transient Wikipedia API failures are no longer cached as permanent "no photo" results.
+
+
+## V2.2 — Realtime and mobile hardening
+
+V2.2 focuses on auction-night reliability rather than adding game rules.
+
+- Rapid **bid / PASS / pause / chat / reaction** traffic uses compact host-authoritative delta packets instead of repeatedly sending the complete room snapshot.
+- Full canonical snapshots remain the recovery path for joins, reconnects, lot transitions, SOLD/UNSOLD resolution and explicit resynchronization.
+- Incoming UI updates are coalesced through the browser animation frame so bursts of realtime messages do not trigger redundant full renders.
+- Chat draft text and focus survive authoritative auction rerenders.
+- The visual countdown refresh interval is reduced to a lower-overhead cadence while host deadline authority remains unchanged.
+- CI includes a deterministic 10-team / 20-player-per-squad / 235-lot stress model and enforces hot-path payload size limits.
+- CI also enforces production asset-size budgets and mobile responsiveness guards.
+- Mobile inputs use a 16px floor to prevent iOS focus zoom, auction controls keep touch-friendly targets, and an additional narrow-phone layout protects widths at 360px and below.
+
+These changes do not alter bidding rules, squad rules, privacy behavior or the host-authoritative game model.
