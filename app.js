@@ -131,7 +131,7 @@ function beep(kind='bid'){
 function header(){
   const status= app.networkStatus==='online' ? ['Live P2P',''] : app.networkStatus==='local' ? ['Local fallback','warn'] : ['No room','off'];
   return `<header class="topbar">
-    <button class="brand" data-action="home" style="background:none;border:0;color:inherit;padding:0"><span class="brand-mark"><span>H</span></span>HAMMER<span style="color:var(--accent)">XI</span><small class="version-mark">V2.2</small></button>
+    <button class="brand" data-action="home" style="background:none;border:0;color:inherit;padding:0"><span class="brand-mark"><span>H</span></span>HAMMER<span style="color:var(--accent)">XI</span><small class="version-mark">V2.2.1</small></button>
     <div class="top-actions">
       <span class="privacy-pill"><span class="dot"></span>No accounts · no permanent storage</span>
       <span class="status-pill"><span class="dot ${status[1]}"></span>${status[0]}</span>
