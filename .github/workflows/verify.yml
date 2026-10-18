@@ -11,7 +11,7 @@ permissions:
 jobs:
   verify:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 12
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -33,6 +33,8 @@ jobs:
         run: node scripts/verify-mobile.mjs
       - name: Run V2 engine regression suite
         run: node scripts/regression-v2.mjs
+      - name: Verify Trystero adapter contract
+        run: node scripts/network-contract.mjs
       - name: Smoke-test browser startup
         run: node scripts/smoke.mjs
       - name: Build production bundle
@@ -41,3 +43,7 @@ jobs:
         run: test -s dist/app.js && test -s dist/index.html && test -s dist/styles.css && test -s dist/ceremony.js
       - name: Enforce production performance budget
         run: node scripts/perf-budget.mjs
+      - name: Install Chromium for browser endurance QA
+        run: npx playwright install --with-deps chromium
+      - name: Run 10-team browser endurance and mobile matrix
+        run: npx playwright test
