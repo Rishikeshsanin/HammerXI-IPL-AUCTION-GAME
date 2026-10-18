@@ -59,6 +59,7 @@ async function assertNoHorizontalOverflow(page){
     };
   });
   const diagnostic=JSON.stringify(result.offenders);
+  if(result.scrollWidth>result.innerWidth+2||result.bodyWidth>result.innerWidth+2)console.log('HAMMERXI_OVERFLOW_DEBUG',JSON.stringify(result));
   expect(result.scrollWidth,'document horizontal overflow; offenders='+diagnostic).toBeLessThanOrEqual(result.innerWidth+2);
   expect(result.bodyWidth,'body horizontal overflow; offenders='+diagnostic).toBeLessThanOrEqual(result.innerWidth+2);
 }
@@ -164,6 +165,10 @@ test('10-team auction survives rapid realtime traffic and mixed phone widths',as
   }
   expect(Date.now()-started,'30 alternating realtime bids').toBeLessThan(25_000);
 
+  await expect.poll(async()=>{
+    const values=await Promise.all([host,...guests].map(async p=>(await p.locator('.big-price').textContent()).trim()));
+    return new Set(values).size;
+  },{message:'all 10 clients must converge on one canonical bid after rapid traffic',timeout:10_000}).toBe(1);
   const price=(await host.locator('.big-price').textContent()).trim();
   const player=(await host.locator('.player-copy h1').textContent()).trim();
   for(const page of guests){
