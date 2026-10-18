@@ -54,7 +54,6 @@ const factory = new Function(
     squadRoleCounts, squadRoleTargets, squadNeeds, renderPrivateSquadPanel,
     applySetting, handleCommand, handleJoin, receiveNetwork, onPeerJoin, onPeerLeave, inviteUrl, applyInviteDeepLink,
     startJoinRetry, clearJoinRetry, syncHostClock, networkNow, safeSharedPhoto, shareCurrentPlayerPhoto,
-  auctionDeltaPayload, broadcastAuctionDelta, broadcastActivity, scheduleRender,
     auctionDeltaPayload, broadcastAuctionDelta, broadcastActivity, scheduleRender
   };`
 );
@@ -72,7 +71,8 @@ const {
   renderAuction, renderPostAuction, renderTradeWindow, renderXiBuilder, renderResults, renderBroadcastAuction, drawNewspaper,
   squadRoleCounts, squadRoleTargets, squadNeeds, renderPrivateSquadPanel,
   applySetting, handleCommand, handleJoin, receiveNetwork, onPeerJoin, onPeerLeave, inviteUrl, applyInviteDeepLink,
-  startJoinRetry, clearJoinRetry, syncHostClock, networkNow, safeSharedPhoto, shareCurrentPlayerPhoto
+  startJoinRetry, clearJoinRetry, syncHostClock, networkNow, safeSharedPhoto, shareCurrentPlayerPhoto,
+  auctionDeltaPayload, broadcastAuctionDelta, broadcastActivity, scheduleRender
 } = engine;
 
 const sent = [];
