@@ -87,7 +87,7 @@ test('mobile route matrix has no horizontal overflow or iOS-hostile controls',as
     const submit=page.locator('#create-form button[type="submit"]');
     const submitBox=await submit.boundingBox();
     expect(submitBox.height,`${width}px create touch target`).toBeGreaterThanOrEqual(43);
-    await page.locator('[data-action="home"]').click();
+    await page.getByRole('button',{name:'Back'}).click();
   }
   await context.close();
 });
