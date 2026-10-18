@@ -50,7 +50,7 @@ app.game={
   version:2,roomCode:'MAX10Q',hostPeerId:'host',phase:'postAuction',
   settings:{maxTeams:10,squadSize:15,purse:125,timerSeconds:12,overseasLimit:6,hallOfFame:true},
   teams,activity:[],stats:{bidCounts:{},warWins:{}},
-  auction:{sold:teams.flatMap(t=>t.players.map(b=>({playerId:b.playerId,teamId:t.id,price:b.price,war:false,bidCount:1,bidTeamCounts:{[t.id]:1}})),unsold:[],queue:[],index:0,round:1,status:'sold',paused:false,passedTeamIds:[],bidHistory:[]}
+  auction:{sold:teams.flatMap(t=>t.players.map(b=>({playerId:b.playerId,teamId:t.id,price:b.price,war:false,bidCount:1,bidTeamCounts:{[t.id]:1}}))),unsold:[],queue:[],index:0,round:1,status:'sold',paused:false,passedTeamIds:[],bidHistory:[]}
 };
 app.route='postAuction';
 ensurePostAuction(app.game);
