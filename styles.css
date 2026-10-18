@@ -353,3 +353,11 @@ img{max-width:100%}
   }
   .topbar,.brand,.top-actions{min-width:0}
 }
+
+
+/* V2.2.1 — final cascade guard: later desktop theme must not restore two columns on phones/tablets */
+@media(max-width:1050px){
+  .hero{grid-template-columns:minmax(0,1fr)}
+  .hero>section,.hero-demo{min-width:0;max-width:100%}
+  .auction-preview{max-width:100%}
+}
