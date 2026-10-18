@@ -334,3 +334,30 @@ img{max-width:100%}
   .auction-mobile-stats{padding-left:11px;padding-right:11px}
   .mobile-private-squad{padding-left:11px;padding-right:11px}
 }
+
+
+/* V2.2.1 — browser-QA narrow-phone fixes */
+@media(max-width:430px){
+  .eyebrow{
+    display:block;
+    max-width:100%;
+    white-space:normal;
+    overflow-wrap:anywhere;
+    line-height:1.45;
+    letter-spacing:.09em;
+  }
+  .eyebrow:before{
+    display:inline-block;
+    vertical-align:middle;
+    margin-right:8px;
+  }
+  .topbar,.brand,.top-actions{min-width:0}
+}
+
+
+/* V2.2.1 — final cascade guard: later desktop theme must not restore two columns on phones/tablets */
+@media(max-width:1050px){
+  .hero{grid-template-columns:minmax(0,1fr)}
+  .hero>section,.hero-demo{min-width:0;max-width:100%}
+  .auction-preview{max-width:100%}
+}

@@ -21,6 +21,7 @@ const app = {
   },
   identity:null, network:null, game:null, networkStatus:'offline', pendingJoin:false,
   hostClock:null, timerClock:null, advanceTimer:null, joinRetryTimer:null, hostMigrationTimer:null, renderFrame:null,
+  pendingAuctionCommand:null, pendingAuctionCommandTimer:null,
   photoCache:new Map(), photoInflight:new Map(), photoBroadcastKey:null,
   broadcastMode:false, lastTensionSecond:null, lastTensionLot:null,
   compactView:!!(typeof window!=='undefined'&&window.matchMedia?.('(max-width:760px)')?.matches),
@@ -38,6 +39,20 @@ function syncHostClock(hostNow){
 }
 function clearJoinRetry(){clearInterval(app.joinRetryTimer);app.joinRetryTimer=null}
 function clearHostMigration(){clearTimeout(app.hostMigrationTimer);app.hostMigrationTimer=null}
+function clearPendingAuctionCommand(renderAfter=false){
+  clearTimeout(app.pendingAuctionCommandTimer);app.pendingAuctionCommandTimer=null;app.pendingAuctionCommand=null;
+  if(renderAfter&&app.route==='auction')scheduleRender();
+}
+function queuePendingAuctionCommand(cmd){
+  if(amHost()||!['bid','pass'].includes(cmd?.type))return false;
+  if(app.pendingAuctionCommand)return true;
+  const a=app.game?.auction;
+  app.pendingAuctionCommand={type:cmd.type,round:a?.round,index:a?.index,at:Date.now()};
+  clearTimeout(app.pendingAuctionCommandTimer);
+  app.pendingAuctionCommandTimer=setTimeout(()=>clearPendingAuctionCommand(true),2500);
+  scheduleRender();
+  return false;
+}
 function sendJoinRequest(target){
   if(!app.pendingJoin||!app.identity||!app.network)return;
   app.network.send('join',app.identity,target);
@@ -131,7 +146,7 @@ function beep(kind='bid'){
 function header(){
   const status= app.networkStatus==='online' ? ['Live P2P',''] : app.networkStatus==='local' ? ['Local fallback','warn'] : ['No room','off'];
   return `<header class="topbar">
-    <button class="brand" data-action="home" style="background:none;border:0;color:inherit;padding:0"><span class="brand-mark"><span>H</span></span>HAMMER<span style="color:var(--accent)">XI</span><small class="version-mark">V2.2</small></button>
+    <button class="brand" data-action="home" style="background:none;border:0;color:inherit;padding:0"><span class="brand-mark"><span>H</span></span>HAMMER<span style="color:var(--accent)">XI</span><small class="version-mark">V2.2.1</small></button>
     <div class="top-actions">
       <span class="privacy-pill"><span class="dot"></span>No accounts · no permanent storage</span>
       <span class="status-pill"><span class="dot ${status[1]}"></span>${status[0]}</span>
@@ -396,6 +411,7 @@ function renderAuction(){
   const a=g.auction,lead=g.teams.find(t=>t.id===a.highestTeamId),next=nextBidAmount(a,p),[can,reason]=canTeamBid(me,p,next,g);
   const quick50=requestedBidAmount(a,p,.5),quick100=requestedBidAmount(a,p,1),[can50]=canTeamBid(me,p,quick50,g),[can100]=canTeamBid(me,p,quick100,g);
   const passed=a.passedTeamIds.includes(me?.id);
+  const pending=!!app.pendingAuctionCommand&&app.pendingAuctionCommand.round===a.round&&app.pendingAuctionCommand.index===a.index;
   const teams=app.compactView?'':g.teams.map(t=>renderScoreTeam(t,me,g)).join('');
   const privateSquad=renderPrivateSquadPanel(me,g);
   const feed=app.hideRightRail?'':g.activity.slice(-26).reverse().map(e=>`<div class="feed-item ${e.kind||''}">${esc(e.text)}</div>`).join('');
@@ -405,7 +421,7 @@ function renderAuction(){
   <section class="auction-col card auction-main"><div class="auction-stage">${a.paused?'<div class="paused-banner">Auction paused by host</div>':''}<div class="stage-top"><div><div class="live-dot">LIVE AUCTION FLOOR</div><div class="lot-tag" style="margin-top:7px">${esc(lot.setLabel)} · LOT ${a.index+1}/${a.queue.length}${a.round===2?' · RECALL':''}</div></div><div class="timer" id="timer" style="--pct:${pct}"><span id="timer-text">${g.settings.timerSeconds}</span></div></div>
   <div class="player-stage"><div class="player-visual">${photoMarkup(p)}<span class="origin-tag">${p.originalTeam} · ${p.overseas?'OVERSEAS':'INDIA'}</span><div class="player-initials">${initials(p.name)}</div><div class="player-visual-meta"><div class="role">${role}</div><div class="tiny muted" style="margin-top:4px">Game reserve ${fmtPrice(p.basePrice)}</div></div></div>
   <div class="player-copy"><div class="player-tags"><span class="tag">${role}</span><span class="tag">${p.overseas?'Overseas':'Indian'}</span><span class="tag">Rating ${p.rating}</span></div><h1>${esc(p.name)}</h1><div class="bid-block"><div class="bid-caption">${lead?'Current bid':'Reserve price'}</div><div class="big-price">${fmtPrice(a.currentBid)}</div><div class="leader-name">${lead?`Highest: <strong>${esc(lead.name)}</strong>`:'Waiting for the opening bid'}</div>
-  <div class="bid-actions"><button class="bid-btn" data-action="bid" ${!can||a.status!=='live'?'disabled':''}>${lead?`BID ${fmtPrice(next)}`:`OPEN AT ${fmtPrice(next)}`}</button><button class="pass-btn ${passed?'undo':''}" data-action="pass" ${a.status!=='live'||a.paused||a.highestTeamId===me?.id?'disabled':''}>${passed?'UNDO PASS':'PASS'}</button></div><div class="quick-bids"><button class="quick-bid" data-action="quick-bid" data-raise="0.5" ${!can50||a.status!=='live'||a.paused?'disabled':''}>+ ₹50L</button><button class="quick-bid" data-action="quick-bid" data-raise="1" ${!can100||a.status!=='live'||a.paused?'disabled':''}>+ ₹1 Cr</button></div><div class="reason">${passed?'Passed for this player — UNDO PASS stays available until the hammer falls.':can?`Next increment: ${fmtPrice(incrementFor(a.currentBid))} · Max safe bid ${fmtPrice(maxAllowedBid(me,g.settings))}`:esc(reason)}</div></div></div></div>
+  <div class="bid-actions"><button class="bid-btn ${pending&&app.pendingAuctionCommand?.type==='bid'?'pending':''}" data-action="bid" ${pending||!can||a.status!=='live'?'disabled':''}>${pending&&app.pendingAuctionCommand?.type==='bid'?'SENDING BID…':lead?`BID ${fmtPrice(next)}`:`OPEN AT ${fmtPrice(next)}`}</button><button class="pass-btn ${passed?'undo':''}" data-action="pass" ${pending||a.status!=='live'||a.paused||a.highestTeamId===me?.id?'disabled':''}>${pending&&app.pendingAuctionCommand?.type==='pass'?'UPDATING…':passed?'UNDO PASS':'PASS'}</button></div><div class="quick-bids"><button class="quick-bid" data-action="quick-bid" data-raise="0.5" ${pending||!can50||a.status!=='live'||a.paused?'disabled':''}>+ ₹50L</button><button class="quick-bid" data-action="quick-bid" data-raise="1" ${pending||!can100||a.status!=='live'||a.paused?'disabled':''}>+ ₹1 Cr</button></div><div class="reason">${pending?'Waiting for host confirmation…':passed?'Passed for this player — UNDO PASS stays available until the hammer falls.':can?`Next increment: ${fmtPrice(incrementFor(a.currentBid))} · Max safe bid ${fmtPrice(maxAllowedBid(me,g.settings))}`:esc(reason)}</div></div></div></div>
   ${a.status==='sold'?`<div class="sold-overlay"><div class="sold-rays"></div><div class="gavel-swing">🔨</div><div class="hammer-card">${a.resolution?.war?'<div class="sold-war">🔥 BIDDING WAR WON</div>':''}<div class="hammer-word">SOLD</div><div class="sold-player">${esc(p.name)}</div><div class="sold-to">${crest(g.teams.find(t=>t.id===a.resolution.teamId),'sm')}<span>TO <strong>${esc(g.teams.find(t=>t.id===a.resolution.teamId)?.name||'')}</strong></span></div><div class="hammer-price">${fmtPrice(a.resolution.price)}</div></div></div>`:''}
   ${a.status==='unsold'?`<div class="sold-overlay"><div class="hammer-card"><div class="hammer-word unsold">UNSOLD</div><div class="hammer-sub">${esc(p.name)} goes to ${a.round===1?'the recall list':'the archives'}</div></div></div>`:''}
   </div>${app.compactView?`<div class="auction-mobile-stats"><div class="metric"><span>Purse</span><strong>${fmtPrice(me?.budget||0)}</strong></div><div class="metric"><span>Squad</span><strong>${me?.players.length||0}/${g.settings.squadSize}</strong></div><div class="metric"><span>Overseas</span><strong>${overseasCount(me||{players:[]})}/${g.settings.overseasLimit}</strong></div></div><div class="mobile-private-squad">${privateSquad}</div>`:''}</section>
@@ -591,7 +607,7 @@ async function initNetwork(code){
   render(); return net;
 }
 async function closeNetwork(){
-  clearInterval(app.hostClock);clearInterval(app.timerClock);clearTimeout(app.advanceTimer);clearJoinRetry();clearHostMigration();
+  clearInterval(app.hostClock);clearInterval(app.timerClock);clearTimeout(app.advanceTimer);clearJoinRetry();clearHostMigration();clearPendingAuctionCommand();
   app.hostClock=app.timerClock=app.advanceTimer=null;app.lastClockBroadcastAt=0;app.clockOffsetMs=0;app.lastHostSyncAt=0;app.photoBroadcastKey=null;
   try{app.network?.close?.()}catch{} app.network=null;app.networkStatus='offline';
 }
@@ -634,7 +650,7 @@ function receiveNetwork(packet,peerId){
   else if(type==='snapshot'&&app.game&&peerId===app.game.hostPeerId){
     const state=payload?.game||payload;if(!state)return;
     clearHostMigration();syncHostClock(payload?.hostNow);const hostTeam=app.game.teams.find(t=>t.ownerPeerId===peerId);if(hostTeam)hostTeam.connected=true;
-    const oldStatus=app.game?.auction?.status,oldBid=app.game?.auction?.currentBid; app.game=state;
+    clearPendingAuctionCommand();const oldStatus=app.game?.auction?.status,oldBid=app.game?.auction?.currentBid; app.game=state;
     app.route=state.phase==='lobby'?'lobby':state.phase;
     if(state.auction?.status==='sold'&&oldStatus!=='sold')beep('sold');else if(state.auction?.currentBid!==oldBid)beep('bid');
     startTimerClock();scheduleRender();
@@ -643,7 +659,7 @@ function receiveNetwork(packet,peerId){
     if(!a||app.game.phase!=='auction'||!d)return;
     clearHostMigration();syncHostClock(d.hostNow);
     if(a.round!==d.round||a.index!==d.index){requestResync();return}
-    const oldStatus=a.status,oldBid=a.currentBid;
+    clearPendingAuctionCommand();const oldStatus=a.status,oldBid=a.currentBid;
     a.currentBid=d.currentBid;a.highestTeamId=d.highestTeamId;a.passedTeamIds=[...(d.passedTeamIds||[])];
     a.deadline=d.deadline;a.status=d.status;a.paused=!!d.paused;a.pauseRemaining=d.pauseRemaining||0;
     a.resolution=d.resolution||null;a.bidHistory=d.bidHistory||[];a.war=d.war||null;
@@ -667,7 +683,7 @@ function receiveNetwork(packet,peerId){
       a.deadline=s.deadline;a.paused=s.paused;a.pauseRemaining=s.pauseRemaining;a.status=s.status;
       updateTimerDom();
     }
-  } else if(type==='notice')toast(payload.title||'Auction',payload.message||'',payload.kind||'');
+  } else if(type==='notice'){clearPendingAuctionCommand(true);toast(payload.title||'Auction',payload.message||'',payload.kind||'')}
 }
 function broadcast(){
   if(!app.game||!app.network)return;
@@ -793,7 +809,14 @@ function revealResults(){
   g.phase='results';addActivity('Playing XIs locked. Final reveal is live.','sold');app.route='results';broadcast();
 }
 
-function command(cmd){if(!app.game||!app.network)return;if(amHost())handleCommand(app.network.selfId,cmd);else app.network.send('cmd',cmd,app.game.hostPeerId)}
+function command(cmd){
+  if(!app.game||!app.network)return;
+  if(amHost())handleCommand(app.network.selfId,cmd);
+  else{
+    if(queuePendingAuctionCommand(cmd))return;
+    app.network.send('cmd',cmd,app.game.hostPeerId);
+  }
+}
 function applySetting(peerId,cmd){
   const g=app.game;if(peerId!==g.hostPeerId||g.phase!=='lobby')return;const key=cmd.key;let value=Number(cmd.value);
   if(key==='maxTeams')value=clamp(value,Math.max(2,g.teams.length),10);

@@ -52,9 +52,10 @@ const factory = new Function(
     autoPickXi, validateXi, xiTargetSize, lockXi, autoFillAllXi, revealResults,
     renderAuction, renderPostAuction, renderTradeWindow, renderXiBuilder, renderResults, renderBroadcastAuction, drawNewspaper,
     squadRoleCounts, squadRoleTargets, squadNeeds, renderPrivateSquadPanel,
-    applySetting, handleCommand, handleJoin, receiveNetwork, onPeerJoin, onPeerLeave, inviteUrl, applyInviteDeepLink,
+    applySetting, handleCommand, command, handleJoin, receiveNetwork, onPeerJoin, onPeerLeave, inviteUrl, applyInviteDeepLink,
     startJoinRetry, clearJoinRetry, syncHostClock, networkNow, safeSharedPhoto, shareCurrentPlayerPhoto,
-    auctionDeltaPayload, broadcastAuctionDelta, broadcastActivity, scheduleRender
+    auctionDeltaPayload, broadcastAuctionDelta, broadcastActivity, scheduleRender,
+    queuePendingAuctionCommand, clearPendingAuctionCommand
   };`
 );
 
@@ -70,9 +71,10 @@ const {
   autoPickXi, validateXi, xiTargetSize, lockXi, autoFillAllXi, revealResults,
   renderAuction, renderPostAuction, renderTradeWindow, renderXiBuilder, renderResults, renderBroadcastAuction, drawNewspaper,
   squadRoleCounts, squadRoleTargets, squadNeeds, renderPrivateSquadPanel,
-  applySetting, handleCommand, handleJoin, receiveNetwork, onPeerJoin, onPeerLeave, inviteUrl, applyInviteDeepLink,
+  applySetting, handleCommand, command, handleJoin, receiveNetwork, onPeerJoin, onPeerLeave, inviteUrl, applyInviteDeepLink,
   startJoinRetry, clearJoinRetry, syncHostClock, networkNow, safeSharedPhoto, shareCurrentPlayerPhoto,
-  auctionDeltaPayload, broadcastAuctionDelta, broadcastActivity, scheduleRender
+  auctionDeltaPayload, broadcastAuctionDelta, broadcastActivity, scheduleRender,
+  queuePendingAuctionCommand, clearPendingAuctionCommand
 } = engine;
 
 const sent = [];
@@ -200,6 +202,23 @@ startAuction('host');
 eq(app.game.phase,'auction','Host start must enter auction phase');
 ok(app.game.auction.queue.length>0,'Auction queue must be populated');
 eq(app.game.auction.status,'live','First lot must be live');
+
+// Guest BID/PASS commands must lock locally until the authoritative host responds.
+// This prevents double-tap BID duplication and PASS -> accidental UNDO on slow mobile links.
+app.network.selfId='peer2';sent.length=0;clearPendingAuctionCommand();
+command({type:'pass'});
+eq(sent.filter(x=>x.type==='cmd').length,1,'First guest PASS must be sent to host');
+ok(app.pendingAuctionCommand?.type==='pass','Guest PASS must enter pending acknowledgement state');
+command({type:'pass'});
+eq(sent.filter(x=>x.type==='cmd').length,1,'Second guest PASS tap must be suppressed while pending');
+clearPendingAuctionCommand();
+command({type:'bid'});
+eq(sent.filter(x=>x.type==='cmd').length,2,'Guest BID must send after pending state clears');
+ok(app.pendingAuctionCommand?.type==='bid','Guest BID must enter pending acknowledgement state');
+command({type:'bid'});
+eq(sent.filter(x=>x.type==='cmd').length,2,'Second guest BID tap must be suppressed while pending');
+clearPendingAuctionCommand();
+app.network.selfId='host';sent.length=0;
 
 // V2.1 private squad intelligence is derived locally from only the current owner's team.
 const emptyIntel=squadNeeds(hostTeam,app.game);

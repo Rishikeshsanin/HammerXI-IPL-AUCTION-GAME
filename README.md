@@ -1,4 +1,4 @@
-# HammerXI V2.2
+# HammerXI V2.2.1
 
 A private, browser-to-browser cricket auction game for 2–10 friends.
 
@@ -103,3 +103,19 @@ V2.2 focuses on auction-night reliability rather than adding game rules.
 - Mobile inputs use a 16px floor to prevent iOS focus zoom, auction controls keep touch-friendly targets, and an additional narrow-phone layout protects widths at 360px and below.
 
 These changes do not alter bidding rules, squad rules, privacy behavior or the host-authoritative game model.
+
+## V2.2.1 — Browser Endurance QA
+
+V2.2.1 turns the maximum-room playtest into repeatable CI instead of relying only on manual testing.
+
+- Playwright opens a real **10-tab HammerXI room** using the deterministic same-browser fallback transport.
+- All 10 franchises join through the actual Host/Join UI and the auction starts through the real controls.
+- The suite exercises rapid alternating bids, +₹50L / +₹1 Cr shortcuts, PASS / UNDO PASS, pause / resume, chat, SOLD, private squad updates and Previous Player rollback.
+- Auction state must converge across all 10 clients after burst traffic.
+- The browser matrix covers **320, 360, 375, 390, 412, 430, 768, 1024, 1280 and 1440px** layouts.
+- Compact-phone tests reject horizontal overflow and verify auction controls stay inside the viewport with touch-friendly heights.
+- A Trystero adapter contract test locks the pinned 0.25.4 integration assumptions: room creation, action send/receive callbacks, peer callbacks, targeted sends and room leave.
+- Guest BID/PASS commands now wait for host acknowledgement before accepting another BID/PASS tap, preventing accidental double-submit behavior on slow links.
+- Browser QA found and fixed a real <=320px home-page overflow caused by a later desktop theme rule restoring the two-column hero layout.
+
+The browser suite is deterministic and does not claim to emulate every carrier/NAT/router combination; live WebRTC still uses the same host-authoritative model in production.
