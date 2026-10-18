@@ -53,7 +53,9 @@ const factory = new Function(
     renderAuction, renderPostAuction, renderTradeWindow, renderXiBuilder, renderResults, renderBroadcastAuction, drawNewspaper,
     squadRoleCounts, squadRoleTargets, squadNeeds, renderPrivateSquadPanel,
     applySetting, handleCommand, handleJoin, receiveNetwork, onPeerJoin, onPeerLeave, inviteUrl, applyInviteDeepLink,
-    startJoinRetry, clearJoinRetry, syncHostClock, networkNow, safeSharedPhoto, shareCurrentPlayerPhoto
+    startJoinRetry, clearJoinRetry, syncHostClock, networkNow, safeSharedPhoto, shareCurrentPlayerPhoto,
+  auctionDeltaPayload, broadcastAuctionDelta, broadcastActivity, scheduleRender,
+    auctionDeltaPayload, broadcastAuctionDelta, broadcastActivity, scheduleRender
   };`
 );
 
@@ -123,6 +125,39 @@ const makeTeam = (id, peer, name, templateIndex) => ({
   kind: 'franchise', templateId: FRANCHISES[templateIndex].id,
   budget: 125, players: [], connected: true
 });
+// V2.2 deterministic 10-team stress model: full room, full squads and late-auction state.
+const stressTeams=FRANCHISES.map((f,i)=>{
+  const t=makeTeam(`s${i+1}`,i===0?'host':`peer${i+1}`,f.short+' Stress',i);
+  t.players=PLAYERS.slice(i*20,(i+1)*20).map((p,j)=>({playerId:p.id,price:Math.round((.3+(j%8)*.2)*100)/100}));
+  t.budget=50;
+  return t;
+});
+const stressPool=buildPool(10,'stress-10-team');
+const stressQueue=buildQueue(stressPool,'stress-10-team');
+app.game={
+  version:2,roomCode:'STRS10',hostPeerId:'host',phase:'auction',
+  settings:{maxTeams:10,squadSize:20,purse:125,timerSeconds:12,overseasLimit:7,hallOfFame:false},
+  teams:stressTeams,
+  activity:Array.from({length:60},(_,i)=>({id:`a${i}`,text:`Stress activity event ${i} with auction context`,kind:i%3===0?'bid':'',at:Date.now()-i*1000})),
+  stats:{bidCounts:Object.fromEntries(stressTeams.map((t,i)=>[t.id,20+i])),warWins:Object.fromEntries(stressTeams.map((t,i)=>[t.id,i%4]))},
+  auction:{
+    queue:stressQueue,index:Math.min(180,stressQueue.length-1),round:1,currentBid:8.4,highestTeamId:stressTeams[3].id,
+    passedTeamIds:stressTeams.slice(5,9).map(t=>t.id),deadline:Date.now()+9000,status:'live',paused:false,pauseRemaining:0,
+    sold:stressQueue.slice(0,160).map((lot,i)=>({playerId:lot.playerId,teamId:stressTeams[i%10].id,price:1+(i%15)*.25,war:i%7===0,bidCount:3+(i%6),bidTeamCounts:{}})),
+    unsold:stressQueue.slice(160,175).map(x=>x.playerId),resolution:null,
+    bidHistory:Array.from({length:8},(_,i)=>({teamId:stressTeams[i%10].id,at:Date.now()-i*500})),war:null
+  }
+};
+const fullStressBytes=Buffer.byteLength(JSON.stringify({game:app.game,hostNow:Date.now()}));
+const deltaStress=auctionDeltaPayload(true);
+const deltaStressBytes=Buffer.byteLength(JSON.stringify(deltaStress));
+ok(stressQueue.length===235,'10-team stress queue must use all 235 configured lots');
+ok(stressTeams.every(t=>t.players.length===20),'10-team stress model must represent 20-player squads');
+ok(fullStressBytes<256000,`Full 10-team resync snapshot too large: ${fullStressBytes} bytes`);
+ok(deltaStressBytes<12000,`Hot-path auction delta too large: ${deltaStressBytes} bytes`);
+ok(deltaStressBytes<fullStressBytes*.30,`Auction delta must be at least 70% smaller than full snapshot: full=${fullStressBytes}, delta=${deltaStressBytes}`);
+console.log('HammerXI V2.2 10-team stress payloads',{fullStressBytes,deltaStressBytes,reduction:Math.round((1-deltaStressBytes/fullStressBytes)*100)+'%'});
+
 const hostTeam = makeTeam('t1','host','Alpha XI',0);
 const peerTeam = makeTeam('t2','peer2','Beta XI',1);
 app.game = {
