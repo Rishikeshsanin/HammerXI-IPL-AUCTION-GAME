@@ -21,3 +21,10 @@
 - CSS transitions honor `prefers-reduced-motion`.
 - Player catalogue ships as a small local JS data module.
 - Story-card and CSV export run in the browser.
+
+## Browser endurance QA
+- CI builds the same `dist/` assets used by production and serves them through a local HTTP server.
+- Playwright runs a 10-tab room through HammerXI's BroadcastChannel fallback. This isolates application/state/UI correctness from public signalling availability while still exercising real browser events and cross-tab messages.
+- A separate Trystero contract test verifies the production transport adapter against the pinned API shape.
+- Guest BID/PASS UI uses an acknowledgement lock: one command can be in flight until a host delta/snapshot/notice clears it, with a short timeout as a recovery guard.
+- Mobile browser QA enforces no horizontal overflow across 320–430px widths and keeps 16px form controls / touch-sized auction actions.
